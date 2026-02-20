@@ -3,6 +3,8 @@ package com.pronosticup.backend.users.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
+//Representa cómo se guarda en BD
+
 @Entity
 @Table(
         name = "users",
@@ -11,6 +13,7 @@ import lombok.*;
                 @UniqueConstraint(columnNames = "email")
         }
 )
+
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class User {
 
