@@ -1,5 +1,6 @@
 package com.pronosticup.backend.pronostics.service;
 
+import com.pronosticup.backend.leagues.entity.League;
 import com.pronosticup.backend.leagues.entity.LeagueMember;
 import com.pronosticup.backend.leagues.repository.LeagueMemberRepository;
 import com.pronosticup.backend.leagues.repository.LeagueRepository;
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -39,9 +41,8 @@ public class PronosticService {
         leagueId = leagueId.trim();
 
         // 2) Validar liga existe (Postgres)
-        if (!leagueRepository.existsById(leagueId)) {
-            throw new RuntimeException("League not found");
-        }
+        League league = leagueRepository.findById(leagueId)
+                .orElseThrow(() -> new RuntimeException("League not found"));
 
 
         // 3) Generar pronosticId (permitiendo varios por misma liga/usuario)
@@ -49,8 +50,11 @@ public class PronosticService {
         while (pronosticRepository.existsByPronosticId(pronosticId)) {
             pronosticId = generatePronosticId(tournament, leagueId, userId);
         }
-
-        Instant now = Instant.now();
+        //4) Comprobar si el usuario es owner o menber, para ello se comprueba que usuario es el owner de la liga, si tiene el mismo id el usuario owner que este entonces se le pone owner
+        //todo-alp: aqui tenemos que comprobar el owner de la liga, y si es asi el role ponemos menber o owner
+        boolean isOwner = Objects.equals(league.getOwner().getId(), userId);
+        String role = isOwner ? "OWNER" : "MEMBER";
+        boolean confirmed = isOwner; //si es owner entonces esta confirmado si no no
 
         // 4) Guardar Mongo (opción B: plano)
         Map<String, Object> metaMap = Map.of(
@@ -59,8 +63,9 @@ public class PronosticService {
                 "userId", userId,
                 "tournament", tournament,
                 "pronosticId", pronosticId,
-                "confirmed", false
+                "confirmed", confirmed
         );
+        Instant now = Instant.now();
 
         Pronostic doc = Pronostic.builder()
                 .pronosticId(pronosticId)
@@ -68,7 +73,7 @@ public class PronosticService {
                 .leagueName(leagueName)
                 .tournament(tournament)
                 .userId(userId)
-                .confirmed(false)
+                .confirmed(confirmed)
                 .createdAt(now)
                 .updatedAt(now)
                 .groupStage(req.groupStage() == null ? Map.of() : req.groupStage())
@@ -81,13 +86,15 @@ public class PronosticService {
         //    (si ya existía membership “genérica”, aquí igual te interesa mantener solo esta tabla como “pronostic entries”)
         //    Role: si el user ya es OWNER en esa liga, deberías recuperarlo de otra tabla/columna.
         //    Como de momento no lo tenemos, guardamos MEMBER por defecto:
-        String role = "MEMBER";
+
+
 
         LeagueMember lm = LeagueMember.builder()
                 .leagueId(leagueId)
                 .userId(userId)
                 .pronosticId(pronosticId)
                 .role(role)
+                .confirmed(confirmed)
                 .build();
 
         leagueMemberRepository.save(lm);

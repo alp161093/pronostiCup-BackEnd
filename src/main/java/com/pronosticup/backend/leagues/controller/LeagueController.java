@@ -3,9 +3,12 @@ package com.pronosticup.backend.leagues.controller;
 import com.pronosticup.backend.leagues.controller.dto.request.AddMemberRequest;
 import com.pronosticup.backend.leagues.controller.dto.request.CreateLeagueRequest;
 import com.pronosticup.backend.leagues.controller.dto.response.LeagueResponse;
+import com.pronosticup.backend.leagues.controller.dto.response.MyLeagueResponse;
 import com.pronosticup.backend.leagues.service.LeagueService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 
 @RestController
@@ -29,6 +32,11 @@ public class LeagueController {
     @GetMapping("/exists/{leagueId}")
     public LeagueResponse getLeague(@PathVariable String leagueId) {
         return leagueService.getLeagueById(leagueId);
+    }
+
+    @GetMapping("/myLeagues/{userId}")
+    public List<MyLeagueResponse> getMyLeagues(@PathVariable Long userId) {
+        return leagueService.getMyLeagues(userId);
     }
 
 }

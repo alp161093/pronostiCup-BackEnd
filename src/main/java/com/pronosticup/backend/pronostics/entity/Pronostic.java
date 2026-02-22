@@ -9,7 +9,9 @@ import java.time.Instant;
 import java.util.Map;
 
 @Document(collection = "pronostics")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Getter @Setter
+@NoArgsConstructor @AllArgsConstructor
+@Builder
 public class Pronostic {
 
     @Id

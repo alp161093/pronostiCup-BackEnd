@@ -2,10 +2,14 @@ package com.pronosticup.backend.leagues.service;
 
 import com.pronosticup.backend.leagues.controller.dto.request.CreateLeagueRequest;
 import com.pronosticup.backend.leagues.controller.dto.response.LeagueResponse;
+import com.pronosticup.backend.leagues.controller.dto.response.MyLeagueResponse;
+import com.pronosticup.backend.leagues.controller.dto.response.PendingConfirmationResponse;
 import com.pronosticup.backend.leagues.entity.League;
 import com.pronosticup.backend.leagues.entity.LeagueMember;
 import com.pronosticup.backend.leagues.repository.LeagueMemberRepository;
 import com.pronosticup.backend.leagues.repository.LeagueRepository;
+import com.pronosticup.backend.leagues.repository.MyLeagueRow;
+import com.pronosticup.backend.leagues.repository.PendingConfirmationRow;
 import com.pronosticup.backend.users.entity.User;
 import com.pronosticup.backend.users.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -13,6 +17,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -91,6 +100,67 @@ public class LeagueService {
                 league.getTournament(),
                 ownerUsername
         );
+    }
+
+    public List<MyLeagueResponse> getMyLeagues(Long userId) {
+
+        List<MyLeagueRow> rows = leagueMemberRepository.findMyLeaguesRows(userId);
+        if (rows.isEmpty()) return List.of();
+
+        // agrupar por liga
+        Map<String, List<MyLeagueRow>> byLeague =
+                rows.stream().collect(Collectors.groupingBy(MyLeagueRow::getLeagueId));
+
+        List<MyLeagueResponse> result = new ArrayList<>();
+
+        for (var entry : byLeague.entrySet()) {
+
+            String leagueId = entry.getKey();
+            List<MyLeagueRow> leagueRows = entry.getValue();
+            MyLeagueRow first = leagueRows.get(0);
+
+            String leagueName = first.getLeagueName();
+            String tournament = first.getTournament();
+
+            // role del usuario en esa liga
+            String role = leagueRows.stream()
+                    .anyMatch(r -> "OWNER".equals(r.getRole()))
+                    ? "OWNER"
+                    : "MEMBER";
+
+            // pronósticos del usuario en esa liga
+            List<String> pronosticIds = leagueRows.stream()
+                    .map(MyLeagueRow::getPronosticId)
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .toList();
+
+            // pendientes solo si OWNER
+            List<PendingConfirmationResponse> pending = List.of();
+
+            if ("OWNER".equals(role)) {
+                List<PendingConfirmationRow> pendingRows =
+                        leagueMemberRepository.findPendingByLeague(leagueId);
+
+                pending = pendingRows.stream()
+                        .map(p -> new PendingConfirmationResponse(
+                                p.getUsername(),
+                                p.getPronosticId()
+                        ))
+                        .toList();
+            }
+
+            result.add(new MyLeagueResponse(
+                    leagueId,
+                    leagueName,
+                    tournament,
+                    role,
+                    pronosticIds,
+                    pending
+            ));
+        }
+
+        return result;
     }
 }
 
