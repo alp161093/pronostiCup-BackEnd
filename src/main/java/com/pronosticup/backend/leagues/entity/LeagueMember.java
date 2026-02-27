@@ -23,4 +23,10 @@ public class LeagueMember {
 
     @Column(nullable = false)
     private String role; // OWNER / MEMBER
+
+    @Column(nullable = false)
+    private boolean confirmed = false;
+
+    @Column(name = "pronostic_alias")
+    private String pronosticAlias;
 }

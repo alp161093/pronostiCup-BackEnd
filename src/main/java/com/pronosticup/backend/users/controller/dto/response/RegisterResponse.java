@@ -8,4 +8,6 @@ import lombok.Data;
 public class RegisterResponse {
     private Long id;
     private String username;
+    private String nombre;
+    private String apellidos;
 }
