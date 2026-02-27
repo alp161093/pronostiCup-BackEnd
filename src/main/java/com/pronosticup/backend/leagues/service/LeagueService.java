@@ -10,6 +10,7 @@ import com.pronosticup.backend.leagues.repository.LeagueMemberRepository;
 import com.pronosticup.backend.leagues.repository.LeagueRepository;
 import com.pronosticup.backend.leagues.repository.MyLeagueRow;
 import com.pronosticup.backend.leagues.repository.PendingConfirmationRow;
+import com.pronosticup.backend.pronostics.controller.dto.response.MyPronosticResponse;
 import com.pronosticup.backend.users.entity.User;
 import com.pronosticup.backend.users.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -17,10 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -107,7 +105,6 @@ public class LeagueService {
         List<MyLeagueRow> rows = leagueMemberRepository.findMyLeaguesRows(userId);
         if (rows.isEmpty()) return List.of();
 
-        // agrupar por liga
         Map<String, List<MyLeagueRow>> byLeague =
                 rows.stream().collect(Collectors.groupingBy(MyLeagueRow::getLeagueId));
 
@@ -123,16 +120,22 @@ public class LeagueService {
             String tournament = first.getTournament();
 
             // role del usuario en esa liga
-            String role = leagueRows.stream()
-                    .anyMatch(r -> "OWNER".equals(r.getRole()))
+            String role = leagueRows.stream().anyMatch(r -> "OWNER".equals(r.getRole()))
                     ? "OWNER"
                     : "MEMBER";
 
-            // pronósticos del usuario en esa liga
-            List<String> pronosticIds = leagueRows.stream()
-                    .map(MyLeagueRow::getPronosticId)
-                    .filter(Objects::nonNull)
-                    .distinct()
+            // ✅ pronósticos del usuario en esa liga (id + alias)
+            // dedupe por pronosticId (por si hay filas repetidas)
+            Map<String, String> pronosticIdToAlias = new LinkedHashMap<>();
+            for (MyLeagueRow r : leagueRows) {
+                String pid = r.getPronosticId();
+                if (pid == null || pid.isBlank()) continue;
+                // si alias es null, no machacamos uno existente
+                pronosticIdToAlias.putIfAbsent(pid, r.getPronosticAlias());
+            }
+
+            List<MyPronosticResponse> pronostics = pronosticIdToAlias.entrySet().stream()
+                    .map(e -> new MyPronosticResponse(e.getKey(), e.getValue()))
                     .toList();
 
             // pendientes solo si OWNER
@@ -155,7 +158,7 @@ public class LeagueService {
                     leagueName,
                     tournament,
                     role,
-                    pronosticIds,
+                    pronostics,
                     pending
             ));
         }

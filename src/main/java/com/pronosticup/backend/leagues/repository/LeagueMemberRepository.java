@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface LeagueMemberRepository extends JpaRepository<LeagueMember, LeagueMemberId> {
 
@@ -22,7 +23,8 @@ public interface LeagueMemberRepository extends JpaRepository<LeagueMember, Leag
       l.name as leagueName,
       l.tournament as tournament,
       lm.role as role,
-      lm.pronosticId as pronosticId
+      lm.pronosticId as pronosticId,
+      lm.pronosticAlias as pronosticAlias
     from LeagueMember lm
     join League l on l.id = lm.leagueId
     where lm.userId = :userId
@@ -40,4 +42,6 @@ public interface LeagueMemberRepository extends JpaRepository<LeagueMember, Leag
       and lm.confirmed = false
     """)
     List<PendingConfirmationRow> findPendingByLeague(@Param("leagueId") String leagueId);
+
+    Optional<LeagueMember> findByLeagueIdAndPronosticId(String leagueId, String pronosticId);
 }

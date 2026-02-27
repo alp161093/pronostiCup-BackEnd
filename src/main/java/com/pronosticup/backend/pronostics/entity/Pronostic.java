@@ -25,6 +25,7 @@ public class Pronostic {
     private String leagueName;
     private String tournament;
     private Long userId;
+    private String pronosticAlias;
 
     private boolean confirmed;
 

@@ -8,6 +8,7 @@ import com.pronosticup.backend.pronostics.controller.dto.request.SavePronosticRe
 import com.pronosticup.backend.pronostics.controller.dto.response.SavePronosticResponse;
 import com.pronosticup.backend.pronostics.entity.Pronostic;
 import com.pronosticup.backend.pronostics.repository.PronosticRepository;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -33,6 +34,9 @@ public class PronosticService {
         String leagueName = req.meta().leagueName();
         String tournament = req.meta().tournament();
         Long userId = longVal(req.meta().userId());
+        String alias = req.meta().pronosticAlias();
+        if (alias != null) alias = alias.trim();
+        if (alias != null && alias.isBlank()) alias = null;
 
         if (leagueId == null || leagueId.isBlank()) throw new RuntimeException("leagueId required");
         if (userId == null) throw new RuntimeException("userId required");
@@ -56,7 +60,7 @@ public class PronosticService {
         String role = isOwner ? "OWNER" : "MEMBER";
         boolean confirmed = isOwner; //si es owner entonces esta confirmado si no no
 
-        // 4) Guardar Mongo (opción B: plano)
+        // 4) Guardar Mongo
         Map<String, Object> metaMap = Map.of(
                 "leagueId", leagueId,
                 "leagueName", leagueName,
@@ -76,6 +80,7 @@ public class PronosticService {
                 .confirmed(confirmed)
                 .createdAt(now)
                 .updatedAt(now)
+                .pronosticAlias(alias)
                 .groupStage(req.groupStage() == null ? Map.of() : req.groupStage())
                 .knockouts(req.knockouts() == null ? Map.of() : req.knockouts())
                 .build();
@@ -95,11 +100,61 @@ public class PronosticService {
                 .pronosticId(pronosticId)
                 .role(role)
                 .confirmed(confirmed)
+                .pronosticAlias(alias)
                 .build();
 
         leagueMemberRepository.save(lm);
 
         return new SavePronosticResponse(pronosticId, false);
+    }
+
+
+    @Transactional
+    public void confirmPronostic(String leagueId, String pronosticId, Long ownerUserId) {
+
+        // 1) Validar owner: la liga existe y ownerUserId coincide
+        League league = leagueRepository.findById(leagueId)
+                .orElseThrow(() -> new RuntimeException("League not found"));
+
+        if (!Objects.equals(league.getOwner().getId(), ownerUserId)) {
+            throw new RuntimeException("Only owner can confirm");
+        }
+
+        // 2) Postgres: marcar confirmed=true en league_members de ese pronóstico
+        LeagueMember lm = leagueMemberRepository.findByLeagueIdAndPronosticId(leagueId, pronosticId)
+                .orElseThrow(() -> new RuntimeException("LeagueMember not found for pronostic"));
+
+        lm.setConfirmed(true);
+        leagueMemberRepository.save(lm);
+
+        // 3) Mongo: mantener coherencia
+        Pronostic doc = pronosticRepository.findByPronosticId(pronosticId)
+                .orElseThrow(() -> new RuntimeException("Pronostic not found in Mongo"));
+
+        doc.setConfirmed(true);
+        doc.setUpdatedAt(Instant.now());
+        pronosticRepository.save(doc);
+    }
+
+    @Transactional
+    public void rejectPronostic(String leagueId, String pronosticId, Long ownerUserId) {
+
+        // 1) Validar owner
+        League league = leagueRepository.findById(leagueId)
+                .orElseThrow(() -> new RuntimeException("League not found"));
+
+        if (!Objects.equals(league.getOwner().getId(), ownerUserId)) {
+            throw new RuntimeException("Only owner can reject");
+        }
+
+        // 2) Postgres: borrar fila del league_members (esa participación)
+        LeagueMember lm = leagueMemberRepository.findByLeagueIdAndPronosticId(leagueId, pronosticId)
+                .orElseThrow(() -> new RuntimeException("LeagueMember not found for pronostic"));
+
+        leagueMemberRepository.delete(lm);
+
+        // 3) Mongo: borrar documento del pronóstico
+        pronosticRepository.deleteByPronosticId(pronosticId);
     }
 
     private String generatePronosticId(String tournament, String leagueId, Long userId) {

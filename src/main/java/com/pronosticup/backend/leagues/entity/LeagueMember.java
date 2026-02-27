@@ -26,4 +26,7 @@ public class LeagueMember {
 
     @Column(nullable = false)
     private boolean confirmed = false;
+
+    @Column(name = "pronostic_alias")
+    private String pronosticAlias;
 }

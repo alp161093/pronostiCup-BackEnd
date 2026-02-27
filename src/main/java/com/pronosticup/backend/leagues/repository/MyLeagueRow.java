@@ -6,4 +6,5 @@ public interface MyLeagueRow {
     String getTournament();
     String getRole();
     String getPronosticId();
+    String getPronosticAlias();
 }

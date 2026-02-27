@@ -18,4 +18,22 @@ public class PronosticController {
     public ResponseEntity<SavePronosticResponse> save(@RequestBody SavePronosticRequest req) {
         return ResponseEntity.ok(pronosticService.saveFirstTime(req));
     }
+
+    @PutMapping("/{leagueId}/{pronosticId}/confirm")
+    public void confirm(
+            @PathVariable String leagueId,
+            @PathVariable String pronosticId,
+            @RequestParam Long ownerUserId
+    ) {
+        pronosticService.confirmPronostic(leagueId, pronosticId, ownerUserId);
+    }
+
+    @DeleteMapping("/{leagueId}/{pronosticId}")
+    public void reject(
+            @PathVariable String leagueId,
+            @PathVariable String pronosticId,
+            @RequestParam Long ownerUserId
+    ) {
+        pronosticService.rejectPronostic(leagueId, pronosticId, ownerUserId);
+    }
 }

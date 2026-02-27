@@ -1,5 +1,7 @@
 package com.pronosticup.backend.leagues.controller.dto.response;
 
+import com.pronosticup.backend.pronostics.controller.dto.response.MyPronosticResponse;
+
 import java.util.List;
 
 public record MyLeagueResponse(
@@ -7,6 +9,6 @@ public record MyLeagueResponse(
         String leagueName,
         String tournament,
         String role, // "OWNER" | "MEMBER"
-        List<String> listPronosticsId,
+        List<MyPronosticResponse> listPronosticsId,
         List<PendingConfirmationResponse> listPendingConfirmations
 ) {}
