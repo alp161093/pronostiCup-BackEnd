@@ -24,7 +24,8 @@ public interface LeagueMemberRepository extends JpaRepository<LeagueMember, Leag
       l.tournament as tournament,
       lm.role as role,
       lm.pronosticId as pronosticId,
-      lm.pronosticAlias as pronosticAlias
+      lm.pronosticAlias as pronosticAlias,
+      lm.confirmed as confirmed
     from LeagueMember lm
     join League l on l.id = lm.leagueId
     where lm.userId = :userId
@@ -35,6 +36,7 @@ public interface LeagueMemberRepository extends JpaRepository<LeagueMember, Leag
     @Query("""
     select 
       lm.pronosticId as pronosticId,
+      lm.pronosticAlias as pronosticAlias,
       u.username as username
     from LeagueMember lm
     join User u on u.id = lm.userId

@@ -7,4 +7,5 @@ public interface MyLeagueRow {
     String getRole();
     String getPronosticId();
     String getPronosticAlias();
+    Boolean getConfirmed();
 }

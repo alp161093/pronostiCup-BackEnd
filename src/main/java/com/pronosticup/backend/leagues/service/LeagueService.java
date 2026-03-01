@@ -110,6 +110,9 @@ public class LeagueService {
 
         List<MyLeagueResponse> result = new ArrayList<>();
 
+        // mini record interno para dedupe (alias + confirmed)
+        record PronosticMini(String alias, boolean confirmed) {}
+
         for (var entry : byLeague.entrySet()) {
 
             String leagueId = entry.getKey();
@@ -124,18 +127,39 @@ public class LeagueService {
                     ? "OWNER"
                     : "MEMBER";
 
-            // ✅ pronósticos del usuario en esa liga (id + alias)
+            // ✅ pronósticos del usuario en esa liga (id + alias + confirmed)
             // dedupe por pronosticId (por si hay filas repetidas)
-            Map<String, String> pronosticIdToAlias = new LinkedHashMap<>();
+            Map<String, PronosticMini> pronosticMap = new LinkedHashMap<>();
+
             for (MyLeagueRow r : leagueRows) {
                 String pid = r.getPronosticId();
                 if (pid == null || pid.isBlank()) continue;
-                // si alias es null, no machacamos uno existente
-                pronosticIdToAlias.putIfAbsent(pid, r.getPronosticAlias());
+
+                // confirmed puede venir null (projection). Lo normalizamos a false.
+                boolean confirmed = Boolean.TRUE.equals(r.getConfirmed());
+                String alias = r.getPronosticAlias();
+
+                // si ya existe, NO lo pisamos (mantiene el primero). Pero si el primero no tenía alias
+                // y este sí, lo rellenamos (mejora UX).
+                PronosticMini existing = pronosticMap.get(pid);
+                if (existing == null) {
+                    pronosticMap.put(pid, new PronosticMini(alias, confirmed));
+                } else {
+                    String finalAlias = existing.alias();
+                    if ((finalAlias == null || finalAlias.isBlank()) && alias != null && !alias.isBlank()) {
+                        pronosticMap.put(pid, new PronosticMini(alias, existing.confirmed()));
+                    }
+                    // Si prefieres que confirmed se actualice si llega true en otra fila:
+                    // if (!existing.confirmed() && confirmed) pronosticMap.put(pid, new PronosticMini(existing.alias(), true));
+                }
             }
 
-            List<MyPronosticResponse> pronostics = pronosticIdToAlias.entrySet().stream()
-                    .map(e -> new MyPronosticResponse(e.getKey(), e.getValue()))
+            List<MyPronosticResponse> pronostics = pronosticMap.entrySet().stream()
+                    .map(e -> new MyPronosticResponse(
+                            e.getKey(),
+                            e.getValue().alias(),
+                            e.getValue().confirmed()
+                    ))
                     .toList();
 
             // pendientes solo si OWNER
@@ -148,7 +172,8 @@ public class LeagueService {
                 pending = pendingRows.stream()
                         .map(p -> new PendingConfirmationResponse(
                                 p.getUsername(),
-                                p.getPronosticId()
+                                p.getPronosticId(),
+                                p.getPronosticAlias()
                         ))
                         .toList();
             }
