@@ -5,7 +5,10 @@ import com.pronosticup.backend.leagues.entity.LeagueMember;
 import com.pronosticup.backend.leagues.repository.LeagueMemberRepository;
 import com.pronosticup.backend.leagues.repository.LeagueRepository;
 import com.pronosticup.backend.pronostics.controller.dto.request.SavePronosticRequest;
+import com.pronosticup.backend.pronostics.controller.dto.request.UpdatePronosticRequest;
+import com.pronosticup.backend.pronostics.controller.dto.response.PronosticDetailResponse;
 import com.pronosticup.backend.pronostics.controller.dto.response.SavePronosticResponse;
+import com.pronosticup.backend.pronostics.controller.dto.response.UpdatePronosticResponse;
 import com.pronosticup.backend.pronostics.entity.Pronostic;
 import com.pronosticup.backend.pronostics.repository.PronosticRepository;
 import jakarta.transaction.Transactional;
@@ -13,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -155,6 +159,92 @@ public class PronosticService {
 
         // 3) Mongo: borrar documento del pronóstico
         pronosticRepository.deleteByPronosticId(pronosticId);
+    }
+
+    public PronosticDetailResponse getPronosticDetail(String pronosticId) {
+        Pronostic pronostic = pronosticRepository.findByPronosticId(pronosticId)
+                .orElseThrow(() -> new RuntimeException("Pronóstico no encontrado: " + pronosticId));
+
+        String firstMatchDate = getFirstMatchDateByTournament(pronostic.getTournament());
+
+        boolean editable = isBeforeTournamentStart(firstMatchDate);
+        boolean canEditAlias = editable;
+
+        return new PronosticDetailResponse(
+                new PronosticDetailResponse.MetaResponse(
+                        pronostic.getPronosticId(),
+                        pronostic.getPronosticAlias(),
+                        pronostic.getLeagueId(),
+                        pronostic.getLeagueName(),
+                        pronostic.getTournament(),
+                        pronostic.isConfirmed(),
+                        editable,
+                        canEditAlias,
+                        firstMatchDate
+                ),
+                pronostic.getGroupStage(),
+                pronostic.getKnockouts(),
+                new PronosticDetailResponse.ScoreResponse(
+                        0,
+                        List.of(
+                                new PronosticDetailResponse.ScoreRuleResponse("Acierto exacto", 3),
+                                new PronosticDetailResponse.ScoreRuleResponse("Acierto ganador", 1),
+                                new PronosticDetailResponse.ScoreRuleResponse("Campeón correcto", 5)
+                        )
+                )
+        );
+    }
+
+    public UpdatePronosticResponse updatePronostic(String pronosticId, UpdatePronosticRequest request) {
+        Pronostic pronostic = pronosticRepository.findByPronosticId(pronosticId)
+                .orElseThrow(() -> new RuntimeException("Pronóstico no encontrado: " + pronosticId));
+
+        String firstMatchDate = getFirstMatchDateByTournament(pronostic.getTournament());
+        boolean editable = isBeforeTournamentStart(firstMatchDate);
+
+        if (!editable) {
+            throw new RuntimeException("El pronóstico ya no puede editarse porque el torneo ha comenzado.");
+        }
+
+        if (request.pronosticAlias() != null && !request.pronosticAlias().isBlank()) {
+            pronostic.setPronosticAlias(request.pronosticAlias().trim());
+        }
+
+        if (request.groupStage() != null) {
+            pronostic.setGroupStage(request.groupStage());
+        }
+
+        if (request.knockouts() != null) {
+            pronostic.setKnockouts(request.knockouts());
+        }
+
+        pronostic.setUpdatedAt(Instant.now());
+
+        Pronostic saved = pronosticRepository.save(pronostic);
+
+        return new UpdatePronosticResponse(
+                saved.getPronosticId(),
+                saved.getPronosticAlias(),
+                saved.getUpdatedAt(),
+                "Pronóstico actualizado correctamente"
+        );
+    }
+
+    private String getFirstMatchDateByTournament(String tournament) {
+        // TODO: sustituir por calendario real del torneo
+        if ("eurocopa".equalsIgnoreCase(tournament)) {
+            return "2026-06-10T21:00:00Z";
+        }
+        return "2026-06-01T21:00:00Z";
+    }
+
+    private boolean isBeforeTournamentStart(String firstMatchDate) {
+        try {
+            Instant tournamentStart = Instant.parse(firstMatchDate);
+            return Instant.now().isBefore(tournamentStart);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private String generatePronosticId(String tournament, String leagueId, Long userId) {

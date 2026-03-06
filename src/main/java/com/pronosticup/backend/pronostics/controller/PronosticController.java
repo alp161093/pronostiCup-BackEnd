@@ -1,7 +1,10 @@
 package com.pronosticup.backend.pronostics.controller;
 
 import com.pronosticup.backend.pronostics.controller.dto.request.SavePronosticRequest;
+import com.pronosticup.backend.pronostics.controller.dto.request.UpdatePronosticRequest;
+import com.pronosticup.backend.pronostics.controller.dto.response.PronosticDetailResponse;
 import com.pronosticup.backend.pronostics.controller.dto.response.SavePronosticResponse;
+import com.pronosticup.backend.pronostics.controller.dto.response.UpdatePronosticResponse;
 import com.pronosticup.backend.pronostics.service.PronosticService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -35,5 +38,18 @@ public class PronosticController {
             @RequestParam Long ownerUserId
     ) {
         pronosticService.rejectPronostic(leagueId, pronosticId, ownerUserId);
+    }
+
+    @GetMapping("/{pronosticId}")
+    public ResponseEntity<PronosticDetailResponse> getPronosticDetail(@PathVariable String pronosticId) {
+        return ResponseEntity.ok(pronosticService.getPronosticDetail(pronosticId));
+    }
+
+    @PutMapping("/{pronosticId}")
+    public ResponseEntity<UpdatePronosticResponse> updatePronostic(
+            @PathVariable String pronosticId,
+            @RequestBody UpdatePronosticRequest request
+    ) {
+        return ResponseEntity.ok(pronosticService.updatePronostic(pronosticId, request));
     }
 }
