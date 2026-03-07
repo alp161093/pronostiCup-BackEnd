@@ -6,9 +6,9 @@ import java.util.Map;
 public record PronosticDetailResponse(
         MetaResponse meta,
         Map<String, Object> groupStage,
-        Map<String, Object> knockouts,
-        ScoreResponse score
-) {
+        Map<String, Object> knockouts
+)
+{
     public record MetaResponse(
             String pronosticId,
             String pronosticAlias,
@@ -18,16 +18,7 @@ public record PronosticDetailResponse(
             boolean confirmed,
             boolean editable,
             boolean canEditAlias,
-            String firstMatchDate
-    ) {}
-
-    public record ScoreResponse(
-            Integer totalScore,
-            List<ScoreRuleResponse> rules
-    ) {}
-
-    public record ScoreRuleResponse(
-            String label,
-            Integer points
+            String firstMatchDate,
+            Integer totalPoints
     ) {}
 }

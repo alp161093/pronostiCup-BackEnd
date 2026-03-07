@@ -26,8 +26,8 @@ public class Pronostic {
     private String tournament;
     private Long userId;
     private String pronosticAlias;
-
     private boolean confirmed;
+    private Integer totalPoints;
 
     private Instant createdAt;
     private Instant updatedAt;

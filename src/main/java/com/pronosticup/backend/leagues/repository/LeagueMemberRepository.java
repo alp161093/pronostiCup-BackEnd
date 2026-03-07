@@ -46,4 +46,6 @@ public interface LeagueMemberRepository extends JpaRepository<LeagueMember, Leag
     List<PendingConfirmationRow> findPendingByLeague(@Param("leagueId") String leagueId);
 
     Optional<LeagueMember> findByLeagueIdAndPronosticId(String leagueId, String pronosticId);
+
+    List<LeagueMember> findByLeagueIdAndConfirmedTrue(String leagueId);
 }

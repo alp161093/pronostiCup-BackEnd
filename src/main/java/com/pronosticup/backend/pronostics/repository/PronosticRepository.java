@@ -14,5 +14,6 @@ public interface PronosticRepository extends MongoRepository<Pronostic, String> 
     List<Pronostic> findByLeagueIdAndConfirmedFalse(String leagueId);
 
     void deleteByPronosticId(String pronosticId);
+
 }
 

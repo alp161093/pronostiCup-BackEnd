@@ -6,20 +6,20 @@ import com.pronosticup.backend.leagues.repository.LeagueMemberRepository;
 import com.pronosticup.backend.leagues.repository.LeagueRepository;
 import com.pronosticup.backend.pronostics.controller.dto.request.SavePronosticRequest;
 import com.pronosticup.backend.pronostics.controller.dto.request.UpdatePronosticRequest;
+import com.pronosticup.backend.pronostics.controller.dto.response.PronosticClasificacionResponse;
 import com.pronosticup.backend.pronostics.controller.dto.response.PronosticDetailResponse;
 import com.pronosticup.backend.pronostics.controller.dto.response.SavePronosticResponse;
 import com.pronosticup.backend.pronostics.controller.dto.response.UpdatePronosticResponse;
 import com.pronosticup.backend.pronostics.entity.Pronostic;
 import com.pronosticup.backend.pronostics.repository.PronosticRepository;
+import com.pronosticup.backend.users.entity.User;
+import com.pronosticup.backend.users.repository.UserRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.UUID;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -28,23 +28,38 @@ public class PronosticService {
     private final LeagueRepository leagueRepository;             // Postgres
     private final LeagueMemberRepository leagueMemberRepository; // Postgres
     private final PronosticRepository pronosticRepository;       // Mongo
+    private final UserRepository userRepository;
 
     public SavePronosticResponse saveFirstTime(SavePronosticRequest req) {
 
         // 1) Validaciones mínimas
-        if (req == null || req.meta() == null) throw new RuntimeException("meta required");
+        if (req == null || req.meta() == null)
+            throw new RuntimeException("meta required");
 
         String leagueId = req.meta().leagueId();
         String leagueName = req.meta().leagueName();
         String tournament = req.meta().tournament();
         Long userId = longVal(req.meta().userId());
         String alias = req.meta().pronosticAlias();
-        if (alias != null) alias = alias.trim();
-        if (alias != null && alias.isBlank()) alias = null;
+        Integer  totalPoints = req.meta().totalPoints();
 
-        if (leagueId == null || leagueId.isBlank()) throw new RuntimeException("leagueId required");
-        if (userId == null) throw new RuntimeException("userId required");
-        if (tournament == null || tournament.isBlank()) throw new RuntimeException("tournament required");
+        if (alias != null)
+            alias = alias.trim();
+
+        if (alias != null && alias.isBlank())
+            alias = null;
+
+        if (leagueId == null || leagueId.isBlank())
+            throw new RuntimeException("leagueId required");
+
+        if (userId == null)
+            throw new RuntimeException("userId required");
+
+        if (tournament == null || tournament.isBlank())
+            throw new RuntimeException("tournament required");
+
+        if (totalPoints == null)
+            totalPoints = 0;
 
         leagueId = leagueId.trim();
 
@@ -59,7 +74,6 @@ public class PronosticService {
             pronosticId = generatePronosticId(tournament, leagueId, userId);
         }
         //4) Comprobar si el usuario es owner o menber, para ello se comprueba que usuario es el owner de la liga, si tiene el mismo id el usuario owner que este entonces se le pone owner
-        //todo-alp: aqui tenemos que comprobar el owner de la liga, y si es asi el role ponemos menber o owner
         boolean isOwner = Objects.equals(league.getOwner().getId(), userId);
         String role = isOwner ? "OWNER" : "MEMBER";
         boolean confirmed = isOwner; //si es owner entonces esta confirmado si no no
@@ -71,7 +85,9 @@ public class PronosticService {
                 "userId", userId,
                 "tournament", tournament,
                 "pronosticId", pronosticId,
-                "confirmed", confirmed
+                "confirmed", confirmed,
+                "totalPoints", totalPoints
+
         );
         Instant now = Instant.now();
 
@@ -85,6 +101,7 @@ public class PronosticService {
                 .createdAt(now)
                 .updatedAt(now)
                 .pronosticAlias(alias)
+                .totalPoints(totalPoints)
                 .groupStage(req.groupStage() == null ? Map.of() : req.groupStage())
                 .knockouts(req.knockouts() == null ? Map.of() : req.knockouts())
                 .build();
@@ -180,18 +197,11 @@ public class PronosticService {
                         pronostic.isConfirmed(),
                         editable,
                         canEditAlias,
-                        firstMatchDate
+                        firstMatchDate,
+                        pronostic.getTotalPoints()
                 ),
                 pronostic.getGroupStage(),
-                pronostic.getKnockouts(),
-                new PronosticDetailResponse.ScoreResponse(
-                        0,
-                        List.of(
-                                new PronosticDetailResponse.ScoreRuleResponse("Acierto exacto", 3),
-                                new PronosticDetailResponse.ScoreRuleResponse("Acierto ganador", 1),
-                                new PronosticDetailResponse.ScoreRuleResponse("Campeón correcto", 5)
-                        )
-                )
+                pronostic.getKnockouts()
         );
     }
 
@@ -228,6 +238,46 @@ public class PronosticService {
                 saved.getUpdatedAt(),
                 "Pronóstico actualizado correctamente"
         );
+    }
+
+    public List<PronosticClasificacionResponse> getLeagueClassification(String leagueId) {
+        List<LeagueMember> members = leagueMemberRepository.findByLeagueIdAndConfirmedTrue(leagueId);
+
+        List<PronosticClasificacionResponse> result = new ArrayList<>();
+
+        for (LeagueMember member : members) {
+            String pronosticId = member.getPronosticId();
+            if (pronosticId == null || pronosticId.isBlank()) {
+                continue;
+            }
+
+            Optional<Pronostic> pronosticOpt = pronosticRepository.findByPronosticId(pronosticId);
+            if (pronosticOpt.isEmpty()) {
+                continue;
+            }
+
+            Pronostic pronostic = pronosticOpt.get();
+
+            String username = userRepository.findById(member.getUserId())
+                    .map(User::getUsername)
+                    .orElse("Usuario");
+
+            Integer totalPoints = pronostic.getTotalPoints() != null ? pronostic.getTotalPoints() : 0;
+
+            result.add(new PronosticClasificacionResponse(
+                    pronosticId,
+                    totalPoints,
+                    username,
+                    member.getPronosticAlias()
+            ));
+        }
+
+        result.sort(Comparator.comparing(
+                PronosticClasificacionResponse::totalPoints,
+                Comparator.nullsLast(Comparator.reverseOrder())
+        ));
+
+        return result;
     }
 
     private String getFirstMatchDateByTournament(String tournament) {
