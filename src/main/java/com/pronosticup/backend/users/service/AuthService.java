@@ -39,7 +39,7 @@ public class AuthService {
 
         userRepo.save(user);
 
-        return new RegisterResponse(user.getId(), user.getUsername());
+        return new RegisterResponse(user.getId(), user.getUsername(), user.getNombre(),  user.getApellidos());
     }
 
     public RegisterResponse login(LoginRequest request) {
@@ -51,6 +51,6 @@ public class AuthService {
             throw new RuntimeException("Contraseña incorrecta");
         }
 
-        return new RegisterResponse(user.getId(), user.getUsername());
+        return new RegisterResponse(user.getId(), user.getUsername(), user.getNombre(),  user.getApellidos());
     }
 }

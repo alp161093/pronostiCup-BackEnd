@@ -1,18 +1,25 @@
 package com.pronosticup.backend.pronostics.service;
 
+import com.pronosticup.backend.leagues.entity.League;
 import com.pronosticup.backend.leagues.entity.LeagueMember;
 import com.pronosticup.backend.leagues.repository.LeagueMemberRepository;
 import com.pronosticup.backend.leagues.repository.LeagueRepository;
 import com.pronosticup.backend.pronostics.controller.dto.request.SavePronosticRequest;
+import com.pronosticup.backend.pronostics.controller.dto.request.UpdatePronosticRequest;
+import com.pronosticup.backend.pronostics.controller.dto.response.PronosticClasificacionResponse;
+import com.pronosticup.backend.pronostics.controller.dto.response.PronosticDetailResponse;
 import com.pronosticup.backend.pronostics.controller.dto.response.SavePronosticResponse;
+import com.pronosticup.backend.pronostics.controller.dto.response.UpdatePronosticResponse;
 import com.pronosticup.backend.pronostics.entity.Pronostic;
 import com.pronosticup.backend.pronostics.repository.PronosticRepository;
+import com.pronosticup.backend.users.entity.User;
+import com.pronosticup.backend.users.repository.UserRepository;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -21,27 +28,44 @@ public class PronosticService {
     private final LeagueRepository leagueRepository;             // Postgres
     private final LeagueMemberRepository leagueMemberRepository; // Postgres
     private final PronosticRepository pronosticRepository;       // Mongo
+    private final UserRepository userRepository;
 
     public SavePronosticResponse saveFirstTime(SavePronosticRequest req) {
 
         // 1) Validaciones mínimas
-        if (req == null || req.meta() == null) throw new RuntimeException("meta required");
+        if (req == null || req.meta() == null)
+            throw new RuntimeException("meta required");
 
         String leagueId = req.meta().leagueId();
         String leagueName = req.meta().leagueName();
         String tournament = req.meta().tournament();
         Long userId = longVal(req.meta().userId());
+        String alias = req.meta().pronosticAlias();
+        Integer  totalPoints = req.meta().totalPoints();
 
-        if (leagueId == null || leagueId.isBlank()) throw new RuntimeException("leagueId required");
-        if (userId == null) throw new RuntimeException("userId required");
-        if (tournament == null || tournament.isBlank()) throw new RuntimeException("tournament required");
+        if (alias != null)
+            alias = alias.trim();
+
+        if (alias != null && alias.isBlank())
+            alias = null;
+
+        if (leagueId == null || leagueId.isBlank())
+            throw new RuntimeException("leagueId required");
+
+        if (userId == null)
+            throw new RuntimeException("userId required");
+
+        if (tournament == null || tournament.isBlank())
+            throw new RuntimeException("tournament required");
+
+        if (totalPoints == null)
+            totalPoints = 0;
 
         leagueId = leagueId.trim();
 
         // 2) Validar liga existe (Postgres)
-        if (!leagueRepository.existsById(leagueId)) {
-            throw new RuntimeException("League not found");
-        }
+        League league = leagueRepository.findById(leagueId)
+                .orElseThrow(() -> new RuntimeException("League not found"));
 
 
         // 3) Generar pronosticId (permitiendo varios por misma liga/usuario)
@@ -49,18 +73,23 @@ public class PronosticService {
         while (pronosticRepository.existsByPronosticId(pronosticId)) {
             pronosticId = generatePronosticId(tournament, leagueId, userId);
         }
+        //4) Comprobar si el usuario es owner o menber, para ello se comprueba que usuario es el owner de la liga, si tiene el mismo id el usuario owner que este entonces se le pone owner
+        boolean isOwner = Objects.equals(league.getOwner().getId(), userId);
+        String role = isOwner ? "OWNER" : "MEMBER";
+        boolean confirmed = isOwner; //si es owner entonces esta confirmado si no no
 
-        Instant now = Instant.now();
-
-        // 4) Guardar Mongo (opción B: plano)
+        // 4) Guardar Mongo
         Map<String, Object> metaMap = Map.of(
                 "leagueId", leagueId,
                 "leagueName", leagueName,
                 "userId", userId,
                 "tournament", tournament,
                 "pronosticId", pronosticId,
-                "confirmed", false
+                "confirmed", confirmed,
+                "totalPoints", totalPoints
+
         );
+        Instant now = Instant.now();
 
         Pronostic doc = Pronostic.builder()
                 .pronosticId(pronosticId)
@@ -68,9 +97,11 @@ public class PronosticService {
                 .leagueName(leagueName)
                 .tournament(tournament)
                 .userId(userId)
-                .confirmed(false)
+                .confirmed(confirmed)
                 .createdAt(now)
                 .updatedAt(now)
+                .pronosticAlias(alias)
+                .totalPoints(totalPoints)
                 .groupStage(req.groupStage() == null ? Map.of() : req.groupStage())
                 .knockouts(req.knockouts() == null ? Map.of() : req.knockouts())
                 .build();
@@ -81,18 +112,189 @@ public class PronosticService {
         //    (si ya existía membership “genérica”, aquí igual te interesa mantener solo esta tabla como “pronostic entries”)
         //    Role: si el user ya es OWNER en esa liga, deberías recuperarlo de otra tabla/columna.
         //    Como de momento no lo tenemos, guardamos MEMBER por defecto:
-        String role = "MEMBER";
+
+
 
         LeagueMember lm = LeagueMember.builder()
                 .leagueId(leagueId)
                 .userId(userId)
                 .pronosticId(pronosticId)
                 .role(role)
+                .confirmed(confirmed)
+                .pronosticAlias(alias)
                 .build();
 
         leagueMemberRepository.save(lm);
 
         return new SavePronosticResponse(pronosticId, false);
+    }
+
+
+    @Transactional
+    public void confirmPronostic(String leagueId, String pronosticId, Long ownerUserId) {
+
+        // 1) Validar owner: la liga existe y ownerUserId coincide
+        League league = leagueRepository.findById(leagueId)
+                .orElseThrow(() -> new RuntimeException("League not found"));
+
+        if (!Objects.equals(league.getOwner().getId(), ownerUserId)) {
+            throw new RuntimeException("Only owner can confirm");
+        }
+
+        // 2) Postgres: marcar confirmed=true en league_members de ese pronóstico
+        LeagueMember lm = leagueMemberRepository.findByLeagueIdAndPronosticId(leagueId, pronosticId)
+                .orElseThrow(() -> new RuntimeException("LeagueMember not found for pronostic"));
+
+        lm.setConfirmed(true);
+        leagueMemberRepository.save(lm);
+
+        // 3) Mongo: mantener coherencia
+        Pronostic doc = pronosticRepository.findByPronosticId(pronosticId)
+                .orElseThrow(() -> new RuntimeException("Pronostic not found in Mongo"));
+
+        doc.setConfirmed(true);
+        doc.setUpdatedAt(Instant.now());
+        pronosticRepository.save(doc);
+    }
+
+    @Transactional
+    public void rejectPronostic(String leagueId, String pronosticId, Long ownerUserId) {
+
+        // 1) Validar owner
+        League league = leagueRepository.findById(leagueId)
+                .orElseThrow(() -> new RuntimeException("League not found"));
+
+        if (!Objects.equals(league.getOwner().getId(), ownerUserId)) {
+            throw new RuntimeException("Only owner can reject");
+        }
+
+        // 2) Postgres: borrar fila del league_members (esa participación)
+        LeagueMember lm = leagueMemberRepository.findByLeagueIdAndPronosticId(leagueId, pronosticId)
+                .orElseThrow(() -> new RuntimeException("LeagueMember not found for pronostic"));
+
+        leagueMemberRepository.delete(lm);
+
+        // 3) Mongo: borrar documento del pronóstico
+        pronosticRepository.deleteByPronosticId(pronosticId);
+    }
+
+    public PronosticDetailResponse getPronosticDetail(String pronosticId) {
+        Pronostic pronostic = pronosticRepository.findByPronosticId(pronosticId)
+                .orElseThrow(() -> new RuntimeException("Pronóstico no encontrado: " + pronosticId));
+
+        String firstMatchDate = getFirstMatchDateByTournament(pronostic.getTournament());
+
+        boolean editable = isBeforeTournamentStart(firstMatchDate);
+        boolean canEditAlias = editable;
+
+        return new PronosticDetailResponse(
+                new PronosticDetailResponse.MetaResponse(
+                        pronostic.getPronosticId(),
+                        pronostic.getPronosticAlias(),
+                        pronostic.getLeagueId(),
+                        pronostic.getLeagueName(),
+                        pronostic.getTournament(),
+                        pronostic.isConfirmed(),
+                        editable,
+                        canEditAlias,
+                        firstMatchDate,
+                        pronostic.getTotalPoints()
+                ),
+                pronostic.getGroupStage(),
+                pronostic.getKnockouts()
+        );
+    }
+
+    public UpdatePronosticResponse updatePronostic(String pronosticId, UpdatePronosticRequest request) {
+        Pronostic pronostic = pronosticRepository.findByPronosticId(pronosticId)
+                .orElseThrow(() -> new RuntimeException("Pronóstico no encontrado: " + pronosticId));
+
+        String firstMatchDate = getFirstMatchDateByTournament(pronostic.getTournament());
+        boolean editable = isBeforeTournamentStart(firstMatchDate);
+
+        if (!editable) {
+            throw new RuntimeException("El pronóstico ya no puede editarse porque el torneo ha comenzado.");
+        }
+
+        if (request.pronosticAlias() != null && !request.pronosticAlias().isBlank()) {
+            pronostic.setPronosticAlias(request.pronosticAlias().trim());
+        }
+
+        if (request.groupStage() != null) {
+            pronostic.setGroupStage(request.groupStage());
+        }
+
+        if (request.knockouts() != null) {
+            pronostic.setKnockouts(request.knockouts());
+        }
+
+        pronostic.setUpdatedAt(Instant.now());
+
+        Pronostic saved = pronosticRepository.save(pronostic);
+
+        return new UpdatePronosticResponse(
+                saved.getPronosticId(),
+                saved.getPronosticAlias(),
+                saved.getUpdatedAt(),
+                "Pronóstico actualizado correctamente"
+        );
+    }
+
+    public List<PronosticClasificacionResponse> getLeagueClassification(String leagueId) {
+        List<LeagueMember> members = leagueMemberRepository.findByLeagueIdAndConfirmedTrue(leagueId);
+
+        List<PronosticClasificacionResponse> result = new ArrayList<>();
+
+        for (LeagueMember member : members) {
+            String pronosticId = member.getPronosticId();
+            if (pronosticId == null || pronosticId.isBlank()) {
+                continue;
+            }
+
+            Optional<Pronostic> pronosticOpt = pronosticRepository.findByPronosticId(pronosticId);
+            if (pronosticOpt.isEmpty()) {
+                continue;
+            }
+
+            Pronostic pronostic = pronosticOpt.get();
+
+            String username = userRepository.findById(member.getUserId())
+                    .map(User::getUsername)
+                    .orElse("Usuario");
+
+            Integer totalPoints = pronostic.getTotalPoints() != null ? pronostic.getTotalPoints() : 0;
+
+            result.add(new PronosticClasificacionResponse(
+                    pronosticId,
+                    totalPoints,
+                    username,
+                    member.getPronosticAlias()
+            ));
+        }
+
+        result.sort(Comparator.comparing(
+                PronosticClasificacionResponse::totalPoints,
+                Comparator.nullsLast(Comparator.reverseOrder())
+        ));
+
+        return result;
+    }
+
+    private String getFirstMatchDateByTournament(String tournament) {
+        // TODO: sustituir por calendario real del torneo
+        if ("eurocopa".equalsIgnoreCase(tournament)) {
+            return "2026-06-10T21:00:00Z";
+        }
+        return "2026-06-01T21:00:00Z";
+    }
+
+    private boolean isBeforeTournamentStart(String firstMatchDate) {
+        try {
+            Instant tournamentStart = Instant.parse(firstMatchDate);
+            return Instant.now().isBefore(tournamentStart);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private String generatePronosticId(String tournament, String leagueId, Long userId) {

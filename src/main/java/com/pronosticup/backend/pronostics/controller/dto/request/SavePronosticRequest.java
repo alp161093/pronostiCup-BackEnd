@@ -13,6 +13,8 @@ public record SavePronosticRequest(
             Long userId,
             String tournament,
             String pronosticId,   // vendrá null, pero da igual
-            Boolean confirmed     // vendrá false, pero da igual
+            Boolean confirmed,     // vendrá false, pero da igual
+            String pronosticAlias,
+            Integer totalPoints
     ) {}
 }
