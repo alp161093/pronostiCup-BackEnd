@@ -3,8 +3,10 @@ package com.pronosticup.backend.leagues.repository;
 import com.pronosticup.backend.leagues.entity.LeagueMember;
 import com.pronosticup.backend.leagues.entity.LeagueMemberId;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
@@ -48,4 +50,22 @@ public interface LeagueMemberRepository extends JpaRepository<LeagueMember, Leag
     Optional<LeagueMember> findByLeagueIdAndPronosticId(String leagueId, String pronosticId);
 
     List<LeagueMember> findByLeagueIdAndConfirmedTrue(String leagueId);
+
+    @Modifying
+    @Transactional
+    @Query("""
+       UPDATE LeagueMember lm
+       SET lm.pronosticAlias = :pronosticAlias
+       WHERE lm.pronosticId = :pronosticId
+       """)
+    int updatePronosticAliasByPronosticId(@Param("pronosticId") String pronosticId,
+                                          @Param("pronosticAlias") String pronosticAlias);
+
+    @Modifying
+    @Transactional
+    @Query("""
+       DELETE FROM LeagueMember lm
+       WHERE lm.pronosticId = :pronosticId
+       """)
+    int deleteByPronosticId(@Param("pronosticId") String pronosticId);
 }
