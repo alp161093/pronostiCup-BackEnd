@@ -11,8 +11,10 @@ import com.pronosticup.backend.leagues.repository.LeagueRepository;
 import com.pronosticup.backend.leagues.repository.MyLeagueRow;
 import com.pronosticup.backend.leagues.repository.PendingConfirmationRow;
 import com.pronosticup.backend.pronostics.controller.dto.response.MyPronosticResponse;
+import com.pronosticup.backend.tournaments.model.TournamentSnapshotDocument;
 import com.pronosticup.backend.users.entity.User;
 import com.pronosticup.backend.users.repository.UserRepository;
+import com.pronosticup.backend.tournaments.repository.TournamentSnapshotRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +30,7 @@ public class LeagueService {
     private final LeagueRepository leagueRepository;
     private final LeagueMemberRepository leagueMemberRepository;
     private final UserRepository userRepository;
+    private final TournamentSnapshotRepository tournamentSnapshotRepository;
 
     @Transactional
     public LeagueResponse createLeague(CreateLeagueRequest req, Long ownerUserId) {
@@ -127,6 +130,11 @@ public class LeagueService {
                     ? "OWNER"
                     : "MEMBER";
 
+            // ✅ calculamos una sola vez si el torneo sigue siendo editable
+            // Todos los pronósticos de la liga pertenecen al mismo torneo
+            String firstMatchDate = getFirstMatchDateByTournament(tournament);
+            boolean editable = isBeforeTournamentStart(firstMatchDate);
+
             // ✅ pronósticos del usuario en esa liga (id + alias + confirmed)
             // dedupe por pronosticId (por si hay filas repetidas)
             Map<String, PronosticMini> pronosticMap = new LinkedHashMap<>();
@@ -135,12 +143,12 @@ public class LeagueService {
                 String pid = r.getPronosticId();
                 if (pid == null || pid.isBlank()) continue;
 
-                // confirmed puede venir null (projection). Lo normalizamos a false.
+                // confirmed puede venir null (projection). Lo normalizamos a false
                 boolean confirmed = Boolean.TRUE.equals(r.getConfirmed());
                 String alias = r.getPronosticAlias();
 
-                // si ya existe, NO lo pisamos (mantiene el primero). Pero si el primero no tenía alias
-                // y este sí, lo rellenamos (mejora UX).
+                // Si ya existe, no lo pisamos.
+                // Pero si el primero no tenía alias y este sí, lo completamos
                 PronosticMini existing = pronosticMap.get(pid);
                 if (existing == null) {
                     pronosticMap.put(pid, new PronosticMini(alias, confirmed));
@@ -149,8 +157,6 @@ public class LeagueService {
                     if ((finalAlias == null || finalAlias.isBlank()) && alias != null && !alias.isBlank()) {
                         pronosticMap.put(pid, new PronosticMini(alias, existing.confirmed()));
                     }
-                    // Si prefieres que confirmed se actualice si llega true en otra fila:
-                    // if (!existing.confirmed() && confirmed) pronosticMap.put(pid, new PronosticMini(existing.alias(), true));
                 }
             }
 
@@ -158,7 +164,8 @@ public class LeagueService {
                     .map(e -> new MyPronosticResponse(
                             e.getKey(),
                             e.getValue().alias(),
-                            e.getValue().confirmed()
+                            e.getValue().confirmed(),
+                            editable
                     ))
                     .toList();
 
@@ -189,6 +196,63 @@ public class LeagueService {
         }
 
         return result;
+    }
+
+    private String getFirstMatchDateByTournament(String tournament) {
+        // Se determina el ID del documento en MongoDB según el torneo
+        String documentId;
+
+        if ("eurocopa".equalsIgnoreCase(tournament)) {
+            documentId = "EUROCOPA_MATCHES_KNOCKOUTS";
+        } else {
+            documentId = "MUNDIAL_MATCHES_KNOCKOUTS";
+        }
+
+        // Se busca el documento en MongoDB mediante el repository
+        Optional<TournamentSnapshotDocument> docOpt =
+                tournamentSnapshotRepository.findById(documentId);
+
+        // Si no existe el documento significa que todavía no se ha sincronizado el torneo con la API externa
+        if (docOpt.isEmpty()) {
+            throw new IllegalStateException("No se encontró snapshot para torneo: " + tournament);
+        }
+
+        //Obtener el payload del documento.
+        Map<String, Object> payload = docOpt.get().getPayload();
+
+        if (payload == null) {
+            throw new IllegalStateException("Payload vacío para torneo: " + tournament);
+        }
+
+        //Dentro del payload existe un array llamado "matches" que contiene todos los partidos del torneo
+        List<Map<String, Object>> matches =
+                (List<Map<String, Object>>) payload.get("matches");
+
+        if (matches == null || matches.isEmpty()) {
+            throw new IllegalStateException("No hay partidos disponibles para torneo: " + tournament);
+        }
+
+        // Obtengo el primer partido del array que es el partido innagural
+        Map<String, Object> firstMatch = matches.get(0);
+
+        // Se extrae la fecha del partido (campo utcDate)
+        Object utcDate = firstMatch.get("utcDate");
+
+        if (utcDate == null) {
+            throw new IllegalStateException("El primer partido no tiene fecha utcDate");
+        }
+        return utcDate.toString();
+    }
+
+    private boolean isBeforeTournamentStart(String firstMatchDate) {
+        try {
+            Instant tournamentStart = Instant.parse(firstMatchDate);
+            Instant dateNow = Instant.now();
+            return dateNow.isBefore(tournamentStart);
+        }
+        catch (Exception e) {
+            return false;
+        }
     }
 }
 
