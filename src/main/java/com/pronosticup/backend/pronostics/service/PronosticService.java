@@ -6,14 +6,13 @@ import com.pronosticup.backend.leagues.repository.LeagueMemberRepository;
 import com.pronosticup.backend.leagues.repository.LeagueRepository;
 import com.pronosticup.backend.pronostics.controller.dto.request.SavePronosticRequest;
 import com.pronosticup.backend.pronostics.controller.dto.request.UpdatePronosticRequest;
-import com.pronosticup.backend.pronostics.controller.dto.response.PronosticClasificacionResponse;
-import com.pronosticup.backend.pronostics.controller.dto.response.PronosticDetailResponse;
-import com.pronosticup.backend.pronostics.controller.dto.response.SavePronosticResponse;
-import com.pronosticup.backend.pronostics.controller.dto.response.UpdatePronosticResponse;
+import com.pronosticup.backend.pronostics.controller.dto.response.*;
 import com.pronosticup.backend.pronostics.entity.Pronostic;
 import com.pronosticup.backend.pronostics.repository.PronosticRepository;
+import com.pronosticup.backend.tournaments.model.TournamentSnapshotDocument;
 import com.pronosticup.backend.users.entity.User;
 import com.pronosticup.backend.users.repository.UserRepository;
+import com.pronosticup.backend.tournaments.repository.TournamentSnapshotRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -29,6 +28,7 @@ public class PronosticService {
     private final LeagueMemberRepository leagueMemberRepository; // Postgres
     private final PronosticRepository pronosticRepository;       // Mongo
     private final UserRepository userRepository;
+    private final TournamentSnapshotRepository tournamentSnapshotRepository;
 
     public SavePronosticResponse saveFirstTime(SavePronosticRequest req) {
 
@@ -216,8 +216,12 @@ public class PronosticService {
             throw new RuntimeException("El pronóstico ya no puede editarse porque el torneo ha comenzado.");
         }
 
+        // Guardamos el alias final para reutilizarlo también en PostgreSQL
+        String newAlias = pronostic.getPronosticAlias();
+
         if (request.pronosticAlias() != null && !request.pronosticAlias().isBlank()) {
-            pronostic.setPronosticAlias(request.pronosticAlias().trim());
+            newAlias = request.pronosticAlias().trim();
+            pronostic.setPronosticAlias(newAlias);
         }
 
         if (request.groupStage() != null) {
@@ -230,7 +234,13 @@ public class PronosticService {
 
         pronostic.setUpdatedAt(Instant.now());
 
+        // 1. Guardar cambios en Mongo
         Pronostic saved = pronosticRepository.save(pronostic);
+
+        // 2. Sincronizar alias en PostgreSQL (league_members)
+        if (newAlias != null && !newAlias.isBlank()) {
+            leagueMemberRepository.updatePronosticAliasByPronosticId(saved.getPronosticId(), newAlias);
+        }
 
         return new UpdatePronosticResponse(
                 saved.getPronosticId(),
@@ -280,19 +290,76 @@ public class PronosticService {
         return result;
     }
 
+    public DeletePronosticResponse deletePronostic(String pronosticId) {
+
+        Pronostic pronostic = pronosticRepository.findByPronosticId(pronosticId)
+                .orElseThrow(() -> new RuntimeException("Pronóstico no encontrado: " + pronosticId));
+
+        // 1. Borrar primero la referencia relacional en PostgreSQL
+        leagueMemberRepository.deleteByPronosticId(pronosticId);
+
+        // 2. Borrar después el documento en MongoDB
+        pronosticRepository.delete(pronostic);
+
+        return new DeletePronosticResponse(
+                pronosticId,
+                "Pronóstico eliminado correctamente"
+        );
+    }
+
     private String getFirstMatchDateByTournament(String tournament) {
-        // TODO: sustituir por calendario real del torneo
+        // Se determina el ID del documento en MongoDB según el torneo
+        String documentId;
+
         if ("eurocopa".equalsIgnoreCase(tournament)) {
-            return "2026-06-10T21:00:00Z";
+            documentId = "EUROCOPA_MATCHES_KNOCKOUTS";
+        } else {
+            documentId = "MUNDIAL_MATCHES_KNOCKOUTS";
         }
-        return "2026-06-01T21:00:00Z";
+
+        // Se busca el documento en MongoDB mediante el repository
+        Optional<TournamentSnapshotDocument> docOpt =
+                tournamentSnapshotRepository.findById(documentId);
+
+        // Si no existe el documento significa que todavía no se ha sincronizado el torneo con la API externa
+        if (docOpt.isEmpty()) {
+            throw new IllegalStateException("No se encontró snapshot para torneo: " + tournament);
+        }
+
+        //Obtener el payload del documento.
+        Map<String, Object> payload = docOpt.get().getPayload();
+
+        if (payload == null) {
+            throw new IllegalStateException("Payload vacío para torneo: " + tournament);
+        }
+
+        //Dentro del payload existe un array llamado "matches" que contiene todos los partidos del torneo
+        List<Map<String, Object>> matches =
+                (List<Map<String, Object>>) payload.get("matches");
+
+        if (matches == null || matches.isEmpty()) {
+            throw new IllegalStateException("No hay partidos disponibles para torneo: " + tournament);
+        }
+
+        // Obtengo el primer partido del array que es el partido innagural
+        Map<String, Object> firstMatch = matches.get(0);
+
+        // Se extrae la fecha del partido (campo utcDate)
+        Object utcDate = firstMatch.get("utcDate");
+
+        if (utcDate == null) {
+            throw new IllegalStateException("El primer partido no tiene fecha utcDate");
+        }
+        return utcDate.toString();
     }
 
     private boolean isBeforeTournamentStart(String firstMatchDate) {
         try {
             Instant tournamentStart = Instant.parse(firstMatchDate);
-            return Instant.now().isBefore(tournamentStart);
-        } catch (Exception e) {
+            Instant dateNow = Instant.now();
+            return dateNow.isBefore(tournamentStart);
+        }
+        catch (Exception e) {
             return false;
         }
     }

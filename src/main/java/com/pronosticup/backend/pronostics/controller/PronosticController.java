@@ -2,10 +2,7 @@ package com.pronosticup.backend.pronostics.controller;
 
 import com.pronosticup.backend.pronostics.controller.dto.request.SavePronosticRequest;
 import com.pronosticup.backend.pronostics.controller.dto.request.UpdatePronosticRequest;
-import com.pronosticup.backend.pronostics.controller.dto.response.PronosticClasificacionResponse;
-import com.pronosticup.backend.pronostics.controller.dto.response.PronosticDetailResponse;
-import com.pronosticup.backend.pronostics.controller.dto.response.SavePronosticResponse;
-import com.pronosticup.backend.pronostics.controller.dto.response.UpdatePronosticResponse;
+import com.pronosticup.backend.pronostics.controller.dto.response.*;
 import com.pronosticup.backend.pronostics.service.PronosticService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -59,5 +56,10 @@ public class PronosticController {
     @GetMapping("/classification/{leagueId}")
     public List<PronosticClasificacionResponse> getLeagueClassification(@PathVariable String leagueId) {
         return pronosticService.getLeagueClassification(leagueId);
+    }
+
+    @DeleteMapping("/delete/{pronosticId}")
+    public ResponseEntity<DeletePronosticResponse> deletePronostic(@PathVariable String pronosticId) {
+        return ResponseEntity.ok(pronosticService.deletePronostic(pronosticId));
     }
 }
