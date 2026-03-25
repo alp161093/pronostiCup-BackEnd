@@ -15,6 +15,7 @@ public class TournamentSyncService {
 
     private final TournamentService tournamentService;
     private final FootballDataClient footballDataClient;
+    private final TeamTranslationService teamTranslationService;
 
     public void syncAll() {
         syncMundial();
@@ -31,6 +32,9 @@ public class TournamentSyncService {
         syncTournamentMatches("EUROCOPA", footballDataClient::getEuroCupMatches);
     }
 
+    /**
+     * Sincronizo la clasificación del torneo, traduzco los equipos y guardo el snapshot en MongoDB.
+     */
     private void syncTournamentStandings(String tournament, Supplier<Map<String, Object>> payloadSupplier) {
         final String type = "standings";
 
@@ -38,13 +42,19 @@ public class TournamentSyncService {
 
         try {
             Map<String, Object> payload = payloadSupplier.get();
-            tournamentService.saveOrReplaceSnapshot(tournament, type, payload);
-            log.info("OK sincronización torneo={} type={} guardada en MongoDB", tournament, type);
+            Map<String, Object> translatedPayload = teamTranslationService.translateStandingsPayload(payload);
+
+            tournamentService.saveOrReplaceSnapshot(tournament, type, translatedPayload);
+
+            log.info("OK sincronización torneo={} type={} guardada en MongoDB con traducciones aplicadas", tournament, type);
         } catch (Exception ex) {
             log.error("KO sincronización torneo={} type={} error={}", tournament, type, ex.getMessage(), ex);
         }
     }
 
+    /**
+     * Sincronizo los partidos del torneo, traduzco los equipos y guardo el snapshot en MongoDB.
+     */
     private void syncTournamentMatches(String tournament, Supplier<Map<String, Object>> payloadSupplier) {
         final String type = "matches-knockouts";
 
@@ -52,8 +62,11 @@ public class TournamentSyncService {
 
         try {
             Map<String, Object> payload = payloadSupplier.get();
-            tournamentService.saveOrReplaceSnapshot(tournament, type, payload);
-            log.info("OK sincronización torneo={} type={} guardada en MongoDB", tournament, type);
+            Map<String, Object> translatedPayload = teamTranslationService.translateMatchesPayload(payload);
+
+            tournamentService.saveOrReplaceSnapshot(tournament, type, translatedPayload);
+
+            log.info("OK sincronización torneo={} type={} guardada en MongoDB con traducciones aplicadas", tournament, type);
         } catch (Exception ex) {
             log.error("KO sincronización torneo={} type={} error={}", tournament, type, ex.getMessage(), ex);
         }

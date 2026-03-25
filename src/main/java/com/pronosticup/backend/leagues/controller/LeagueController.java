@@ -38,6 +38,10 @@ public class LeagueController {
     public List<MyLeagueResponse> getMyLeagues(@PathVariable Long userId) {
         return leagueService.getMyLeagues(userId);
     }
+    @GetMapping("/canJoinOrCreate/{tournament}")
+    public boolean canJoinOrCreateLeague(@PathVariable String tournament) {
+        return leagueService.canJoinOrCreateLeague(tournament);
+    }
 
 }
 
