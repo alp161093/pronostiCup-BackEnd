@@ -68,4 +68,6 @@ public interface LeagueMemberRepository extends JpaRepository<LeagueMember, Leag
        WHERE lm.pronosticId = :pronosticId
        """)
     int deleteByPronosticId(@Param("pronosticId") String pronosticId);
+
+
 }
