@@ -1,5 +1,6 @@
 package com.pronosticup.backend.pronostics.controller;
 
+import com.pronosticup.backend.pronostics.controller.dto.request.DecryptPronosticRequest;
 import com.pronosticup.backend.pronostics.controller.dto.request.SavePronosticRequest;
 import com.pronosticup.backend.pronostics.controller.dto.request.UpdatePronosticRequest;
 import com.pronosticup.backend.pronostics.controller.dto.response.*;
@@ -23,20 +24,12 @@ public class PronosticController {
     }
 
     @PutMapping("/{leagueId}/{pronosticId}/confirm")
-    public void confirm(
-            @PathVariable String leagueId,
-            @PathVariable String pronosticId,
-            @RequestParam Long ownerUserId
-    ) {
+    public void confirm(@PathVariable String leagueId, @PathVariable String pronosticId, @RequestParam Long ownerUserId ) {
         pronosticService.confirmPronostic(leagueId, pronosticId, ownerUserId);
     }
 
     @DeleteMapping("/{leagueId}/{pronosticId}")
-    public void reject(
-            @PathVariable String leagueId,
-            @PathVariable String pronosticId,
-            @RequestParam Long ownerUserId
-    ) {
+    public void reject(@PathVariable String leagueId, @PathVariable String pronosticId, @RequestParam Long ownerUserId ) {
         pronosticService.rejectPronostic(leagueId, pronosticId, ownerUserId);
     }
 
@@ -61,5 +54,10 @@ public class PronosticController {
     @DeleteMapping("/delete/{pronosticId}")
     public ResponseEntity<DeletePronosticResponse> deletePronostic(@PathVariable String pronosticId) {
         return ResponseEntity.ok(pronosticService.deletePronostic(pronosticId));
+    }
+
+    @PostMapping("/decrypt")
+    public DecryptPronosticResponse decryptPronostic(@RequestBody DecryptPronosticRequest request) {
+        return pronosticService.decryptPronostic(request);
     }
 }
