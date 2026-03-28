@@ -44,3 +44,6 @@ target/
 
 # Env
 .env
+
+#para que no nos tenga en cuenta este archivo y no se suba a git
+src/main/resources/application-local.properties
