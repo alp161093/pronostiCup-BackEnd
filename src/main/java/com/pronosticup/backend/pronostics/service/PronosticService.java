@@ -1,14 +1,17 @@
 package com.pronosticup.backend.pronostics.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pronosticup.backend.leagues.entity.League;
 import com.pronosticup.backend.leagues.entity.LeagueMember;
 import com.pronosticup.backend.leagues.repository.LeagueMemberRepository;
 import com.pronosticup.backend.leagues.repository.LeagueRepository;
+import com.pronosticup.backend.pronostics.controller.dto.request.DecryptPronosticRequest;
 import com.pronosticup.backend.pronostics.controller.dto.request.SavePronosticRequest;
 import com.pronosticup.backend.pronostics.controller.dto.request.UpdatePronosticRequest;
 import com.pronosticup.backend.pronostics.controller.dto.response.*;
 import com.pronosticup.backend.pronostics.entity.Pronostic;
 import com.pronosticup.backend.pronostics.repository.PronosticRepository;
+import com.pronosticup.backend.security.service.EncryptionService;
 import com.pronosticup.backend.tournaments.model.TournamentSnapshotDocument;
 import com.pronosticup.backend.users.entity.User;
 import com.pronosticup.backend.users.repository.UserRepository;
@@ -29,6 +32,9 @@ public class PronosticService {
     private final PronosticRepository pronosticRepository;       // Mongo
     private final UserRepository userRepository;
     private final TournamentSnapshotRepository tournamentSnapshotRepository;
+    private final PronosticReceiptService pronosticReceiptService;
+    private final EncryptionService encryptionService;
+    private final ObjectMapper objectMapper;
 
     public SavePronosticResponse saveFirstTime(SavePronosticRequest req) {
 
@@ -126,6 +132,27 @@ public class PronosticService {
 
         leagueMemberRepository.save(lm);
 
+        /**
+         * Envío el comprobante cifrado solo cuando el pronóstico y la relación con la liga ya se han guardado correctamente.
+         * Si el correo falla no revierto el guardado, solo dejo trazado el error.
+         */
+        try {
+            String userEmail = userRepository.findById(userId)
+                    .orElseThrow(() -> new RuntimeException("User not found"))
+                    .getEmail();
+
+            pronosticReceiptService.sendEncryptedPronosticReceipt(
+                    doc,
+                    userEmail,
+                    leagueName,
+                    tournament,
+                    alias
+            );
+
+        } catch (Exception e) {
+            throw new RuntimeException("No he podido enviar el comprobante por email para pronosticId=" + pronosticId);
+        }
+
         return new SavePronosticResponse(pronosticId, false);
     }
 
@@ -155,6 +182,23 @@ public class PronosticService {
         doc.setConfirmed(true);
         doc.setUpdatedAt(Instant.now());
         pronosticRepository.save(doc);
+
+        //Envío el correo de aceptación cuando la confirmación  ya se ha guardado correctamente en PostgreSQL y Mongo.
+        try {
+            String userEmail = userRepository.findById(doc.getUserId())
+                    .orElseThrow(() -> new RuntimeException("User not found"))
+                    .getEmail();
+
+            pronosticReceiptService.sendPronosticAcceptedEmail(
+                    userEmail,
+                    doc.getLeagueName(),
+                    doc.getTournament(),
+                    doc.getPronosticAlias()
+            );
+
+        } catch (Exception e) {
+            throw new RuntimeException("No he podido enviar el email de aceptación para pronosticId= "+ pronosticId);
+        }
     }
 
     @Transactional
@@ -168,14 +212,44 @@ public class PronosticService {
             throw new RuntimeException("Only owner can reject");
         }
 
-        // 2) Postgres: borrar fila del league_members (esa participación)
+        // 2) Postgres: obtener fila del league_members
         LeagueMember lm = leagueMemberRepository.findByLeagueIdAndPronosticId(leagueId, pronosticId)
                 .orElseThrow(() -> new RuntimeException("LeagueMember not found for pronostic"));
 
+        // 3) Mongo: obtener documento antes de borrarlo para reutilizar sus datos en el email
+        Pronostic doc = pronosticRepository.findByPronosticId(pronosticId)
+                .orElseThrow(() -> new RuntimeException("Pronostic not found in Mongo"));
+
+        String leagueName = doc.getLeagueName();
+        String tournament = doc.getTournament();
+        String alias = doc.getPronosticAlias();
+        Long userId = doc.getUserId();
+
+        // 4) Postgres: borrar fila del league_members (esa participación)
         leagueMemberRepository.delete(lm);
 
-        // 3) Mongo: borrar documento del pronóstico
+        // 5) Mongo: borrar documento del pronóstico
         pronosticRepository.deleteByPronosticId(pronosticId);
+
+        /**
+         * Envío el correo de rechazo cuando el pronóstico
+         * ya ha sido eliminado correctamente.
+         */
+        try {
+            String userEmail = userRepository.findById(userId)
+                    .orElseThrow(() -> new RuntimeException("User not found"))
+                    .getEmail();
+
+            pronosticReceiptService.sendPronosticRejectedEmail(
+                    userEmail,
+                    leagueName,
+                    tournament,
+                    alias
+            );
+
+        } catch (Exception e) {
+            throw new RuntimeException("No he podido enviar el email de rechazo para pronosticId= " + pronosticId);
+        }
     }
 
     public PronosticDetailResponse getPronosticDetail(String pronosticId) {
@@ -242,6 +316,28 @@ public class PronosticService {
             leagueMemberRepository.updatePronosticAliasByPronosticId(saved.getPronosticId(), newAlias);
         }
 
+        /**
+         * Envío el comprobante cifrado de la actualización una vez guardados
+         * los cambios en Mongo y sincronizado el alias en PostgreSQL.
+         * Si el email falla no rompo la actualización del pronóstico.
+         */
+        try {
+            String userEmail = userRepository.findById(saved.getUserId())
+                    .orElseThrow(() -> new RuntimeException("User not found"))
+                    .getEmail();
+
+            pronosticReceiptService.sendUpdatedPronosticReceipt(
+                    saved,
+                    userEmail,
+                    saved.getLeagueName(),
+                    saved.getTournament(),
+                    saved.getPronosticAlias()
+            );
+
+        } catch (Exception e) {
+            throw new RuntimeException("No he podido enviar el comprobante de actualización para pronosticId = " + saved.getPronosticId());
+        }
+
         return new UpdatePronosticResponse(
                 saved.getPronosticId(),
                 saved.getPronosticAlias(),
@@ -305,6 +401,59 @@ public class PronosticService {
                 pronosticId,
                 "Pronóstico eliminado correctamente"
         );
+    }
+
+    /**
+     * Descifro un pronóstico recibido desde el frontend y valido
+     * que el torneo del contenido coincida con el torneo indicado.
+     */
+    public DecryptPronosticResponse decryptPronostic(DecryptPronosticRequest request) {
+
+        if (request == null) {
+            throw new RuntimeException("request required");
+        }
+
+        if (request.encryptedPronostic() == null || request.encryptedPronostic().isBlank()) {
+            throw new RuntimeException("encryptedPronostic required");
+        }
+
+        if (request.tournament() == null || request.tournament().isBlank()) {
+            throw new RuntimeException("tournament required");
+        }
+
+        try {
+            // 1. Descifro el texto recibido
+            String decryptedJson = encryptionService.decrypt(request.encryptedPronostic().trim());
+
+            // 2. Lo convierto al documento Pronostic real
+            Pronostic pronostic = objectMapper.readValue(decryptedJson, Pronostic.class);
+
+            if (pronostic == null) {
+                throw new RuntimeException("No se ha podido reconstruir el pronóstico");
+            }
+
+            // 3. Valido que el torneo coincida con el que el usuario está usando
+            String requestTournament = request.tournament().trim().toLowerCase();
+            String pronosticTournament = pronostic.getTournament() == null
+                    ? ""
+                    : pronostic.getTournament().trim().toLowerCase();
+
+            if (!requestTournament.equals(pronosticTournament)) {
+                throw new RuntimeException("El pronóstico cifrado no pertenece al torneo seleccionado");
+            }
+
+            // 4. Devuelvo solo la parte que el frontend necesita para rellenar la vista
+            return new DecryptPronosticResponse(
+                    pronostic.getTournament(),
+                    pronostic.getGroupStage(),
+                    pronostic.getKnockouts()
+            );
+
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("No se ha podido descifrar el pronóstico", e);
+        }
     }
 
     private String getFirstMatchDateByTournament(String tournament) {
