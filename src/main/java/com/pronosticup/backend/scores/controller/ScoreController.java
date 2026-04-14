@@ -26,4 +26,6 @@ public class ScoreController {
     public void recalculateAllScores() {
         scoreBatchService.calculateScoresBatchForAllSupportedTournaments();
     }
+
+
 }

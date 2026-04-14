@@ -408,7 +408,8 @@ public class TeamTranslationService {
         addTranslation(translations, "Scotland", "Escocia");
         addTranslation(translations, "England", "Inglaterra");
         addTranslation(translations, "Czechia", "Republica Checa");
-
+        addTranslation(translations, "Congo DR", "RD Congo");
+        addTranslation(translations, "Iraq", "Irak");
 
         return translations;
     }
