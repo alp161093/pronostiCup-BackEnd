@@ -49,6 +49,7 @@ public class ScoreBatchService {
         //   obtengo la fecha de referencia del torneo y compruebo si estoy dentro de la ventana válida.
         Instant firstDate = scoreService.getFirstDateFromMatchesPayload(matchesPayload);
         boolean shouldCalculate = scoreService.isInsideCalculationWindow(firstDate);
+        //alp:IMPORTANTE QUITAR ESTE IF PORQUE SOLO SON PARA PRUEBAS EN CALIENTE
         if(!shouldCalculate && tournament.equals("mundial")) {
             shouldCalculate = true;
         }
@@ -505,10 +506,10 @@ public class ScoreBatchService {
         String roundKey = getKnockoutRound(predictedKoMatch);
 
         if (roundKey == null || roundKey.isBlank()) {
+            resetKoMatchPoints(predictedKoMatch);
             return 0;
         }
 
-        //   trato primero las rondas especiales porque tienen lógica propia.
         if ("FINAL".equalsIgnoreCase(roundKey)) {
             return calculateFinalChampionPoints(pronostic, predictedKoMatch, officialMatchesByStage);
         }
@@ -524,33 +525,39 @@ public class ScoreBatchService {
         String predictedAwayTeam = extractTeamNameFromKnockoutSide(away);
 
         if (predictedHomeTeam == null || predictedAwayTeam == null) {
+            resetKoMatchPoints(predictedKoMatch);
             return 0;
         }
 
         int pointsPerQualifiedTeam = getPointsPerQualifiedTeam(roundKey);
 
         if (pointsPerQualifiedTeam == 0) {
+            resetKoMatchPoints(predictedKoMatch);
             return 0;
         }
 
         List<String> teamsInSameRound = getQualifiedTeamsInStage(officialMatchesByStage.get(roundKey));
 
         if (teamsInSameRound.isEmpty()) {
+            resetKoMatchPoints(predictedKoMatch);
             return 0;
         }
 
-        int points = 0;
+        int homePoints = teamsInSameRound.contains(predictedHomeTeam) ? pointsPerQualifiedTeam : 0;
+        int awayPoints = teamsInSameRound.contains(predictedAwayTeam) ? pointsPerQualifiedTeam : 0;
+        int totalPoints = homePoints + awayPoints;
 
-        if (teamsInSameRound.contains(predictedHomeTeam)) {
-            points += pointsPerQualifiedTeam;
-        }
+        predictedKoMatch.put("homeMatchPoints", homePoints);
+        predictedKoMatch.put("awayMatchPoints", awayPoints);
+        predictedKoMatch.put("matchPoints", totalPoints);
 
-        if (teamsInSameRound.contains(predictedAwayTeam)) {
-            points += pointsPerQualifiedTeam;
-        }
-        //se añade la puntuacion al json a la propiedad matchPoints
-        predictedKoMatch.put("matchPoints", points);
-        return points;
+        return totalPoints;
+    }
+    /**si no se puede puntuar una ronda, o falta info, o el partido es inválido, se deja el partido KO limpio y consistente*/
+    private void resetKoMatchPoints(Map<String, Object> predictedKoMatch) {
+        predictedKoMatch.put("homeMatchPoints", 0);
+        predictedKoMatch.put("awayMatchPoints", 0);
+        predictedKoMatch.put("matchPoints", 0);
     }
 
     /**
@@ -669,6 +676,7 @@ public class ScoreBatchService {
         List<Map<String, Object>> officialFinals = officialMatchesByStage.get("FINAL");
 
         if (officialFinals == null || officialFinals.isEmpty()) {
+            resetKoMatchPoints(predictedKoMatch);
             return 0;
         }
 
@@ -677,6 +685,7 @@ public class ScoreBatchService {
         String winner = scoreService.getString(score, "winner");
 
         if (winner == null || winner.isBlank()) {
+            resetKoMatchPoints(predictedKoMatch);
             return 0;
         }
 
@@ -685,20 +694,6 @@ public class ScoreBatchService {
 
         String officialHomeName = scoreService.getString(officialHomeTeam, "name");
         String officialAwayName = scoreService.getString(officialAwayTeam, "name");
-        Map<String, Object> home = scoreService.getMap(predictedKoMatch, "home");
-        Map<String, Object> away = scoreService.getMap(predictedKoMatch, "away");
-
-        String predictedHomeTeam = extractTeamNameFromKnockoutSide(home);
-        String predictedAwayTeam = extractTeamNameFromKnockoutSide(away);
-        int points = 0;
-        // 800 por acertar los equipos que juegan el 1º/2º puesto
-        if (Objects.equals(predictedHomeTeam, officialHomeName) || Objects.equals(predictedHomeTeam, officialAwayName)) {
-            points += 800;
-        }
-
-        if (Objects.equals(predictedAwayTeam, officialHomeName) || Objects.equals(predictedAwayTeam, officialAwayName)) {
-            points += 800;
-        }
 
         String championName = null;
 
@@ -709,18 +704,35 @@ public class ScoreBatchService {
         }
 
         if (championName == null) {
+            resetKoMatchPoints(predictedKoMatch);
             return 0;
         }
 
+        Map<String, Object> home = scoreService.getMap(predictedKoMatch, "home");
+        Map<String, Object> away = scoreService.getMap(predictedKoMatch, "away");
+
+        String predictedHomeTeam = extractTeamNameFromKnockoutSide(home);
+        String predictedAwayTeam = extractTeamNameFromKnockoutSide(away);
         String predictedChampion = extractChampionTeamName(pronostic, predictedKoMatch);
 
+        int homePoints = 0;
+        int awayPoints = 0;
+
         if (predictedChampion != null && Objects.equals(predictedChampion, championName)) {
-            //se añade la puntuacion al json a la propiedad matchPoints
-            predictedKoMatch.put("matchPoints", 1500);
-            return points += 1500;
+            if (Objects.equals(predictedHomeTeam, championName)) {
+                homePoints = 1500;
+            } else if (Objects.equals(predictedAwayTeam, championName)) {
+                awayPoints = 1500;
+            }
         }
 
-        return points;
+        int totalPoints = homePoints + awayPoints;
+
+        predictedKoMatch.put("homeMatchPoints", homePoints);
+        predictedKoMatch.put("awayMatchPoints", awayPoints);
+        predictedKoMatch.put("matchPoints", totalPoints);
+
+        return totalPoints;
     }
 
     /**
@@ -733,6 +745,7 @@ public class ScoreBatchService {
         List<Map<String, Object>> officialThirdPlaceMatches = officialMatchesByStage.get("THIRD_PLACE");
 
         if (officialThirdPlaceMatches == null || officialThirdPlaceMatches.isEmpty()) {
+            resetKoMatchPoints(predictedKoMatch);
             return 0;
         }
 
@@ -750,18 +763,17 @@ public class ScoreBatchService {
         String predictedHomeTeam = extractTeamNameFromKnockoutSide(home);
         String predictedAwayTeam = extractTeamNameFromKnockoutSide(away);
 
-        int points = 0;
+        int homePoints = 0;
+        int awayPoints = 0;
 
-        // 600 por acertar los equipos que juegan el 3º/4º puesto
         if (Objects.equals(predictedHomeTeam, officialHomeName) || Objects.equals(predictedHomeTeam, officialAwayName)) {
-            points += 600;
+            homePoints += 600;
         }
 
         if (Objects.equals(predictedAwayTeam, officialHomeName) || Objects.equals(predictedAwayTeam, officialAwayName)) {
-            points += 600;
+            awayPoints += 600;
         }
 
-        // 1000 por acertar quién queda tercero
         Map<String, Object> score = scoreService.getMap(officialThirdPlace, "score");
         String winner = scoreService.getString(score, "winner");
 
@@ -778,12 +790,21 @@ public class ScoreBatchService {
         if (officialThirdPlaceWinner != null
                 && predictedThirdPlaceWinner != null
                 && Objects.equals(predictedThirdPlaceWinner, officialThirdPlaceWinner)) {
-            //se añade la puntuacion al json a la propiedad matchPoints
-            predictedKoMatch.put("matchPoints", 1000);
-            points += 1000;
+
+            if (Objects.equals(predictedHomeTeam, predictedThirdPlaceWinner)) {
+                homePoints += 1000;
+            } else if (Objects.equals(predictedAwayTeam, predictedThirdPlaceWinner)) {
+                awayPoints += 1000;
+            }
         }
 
-        return points;
+        int totalPoints = homePoints + awayPoints;
+
+        predictedKoMatch.put("homeMatchPoints", homePoints);
+        predictedKoMatch.put("awayMatchPoints", awayPoints);
+        predictedKoMatch.put("matchPoints", totalPoints);
+
+        return totalPoints;
     }
     /**
      * Extraigo el nombre del equipo ganador de un partido KO del pronóstico.
