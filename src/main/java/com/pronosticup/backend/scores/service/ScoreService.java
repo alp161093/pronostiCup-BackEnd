@@ -1,5 +1,7 @@
 package com.pronosticup.backend.scores.service;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pronosticup.backend.leagues.entity.League;
 import com.pronosticup.backend.leagues.entity.LeagueMember;
 import com.pronosticup.backend.leagues.repository.LeagueMemberRepository;
@@ -9,11 +11,15 @@ import com.pronosticup.backend.pronostics.repository.PronosticRepository;
 import com.pronosticup.backend.tournaments.model.TournamentSnapshotDocument;
 import com.pronosticup.backend.tournaments.repository.TournamentSnapshotRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.io.InputStream;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
@@ -25,12 +31,18 @@ public class ScoreService {
     private final LeagueRepository leagueRepository;
     private final LeagueMemberRepository leagueMemberRepository;
     private final PronosticRepository pronosticRepository;
+    @Value("${app.scores.use-local-snapshots:false}")
+    private boolean useLocalSnapshots;
 
     /**
      *   obtengo el snapshot de partidos y cruces del torneo indicado.
      */
     public TournamentSnapshotDocument getMatchesKnockoutsSnapshot(String tournament) {
         String snapshotId = resolveMatchesKnockoutsSnapshotId(tournament);
+
+        if (useLocalSnapshots) {
+            return loadLocalSnapshot(snapshotId);
+        }
 
         return tournamentSnapshotRepository.findById(snapshotId)
                 .orElseThrow(() -> new RuntimeException("No existe el snapshot " + snapshotId));
@@ -41,6 +53,10 @@ public class ScoreService {
      */
     public TournamentSnapshotDocument getStandingsSnapshot(String tournament) {
         String snapshotId = resolveStandingsSnapshotId(tournament);
+
+        if (useLocalSnapshots) {
+            return loadLocalSnapshot(snapshotId);
+        }
 
         return tournamentSnapshotRepository.findById(snapshotId)
                 .orElseThrow(() -> new RuntimeException("No existe el snapshot " + snapshotId));
@@ -223,7 +239,38 @@ public class ScoreService {
         if (value instanceof List<?> list) {
             return (List<Map<String, Object>>) list;
         }
+        if (value instanceof Map<?, ?> valueMap) {
+            return new ArrayList<>((Collection<? extends Map<String, Object>>) valueMap.values());
+        }
+
 
         return List.of();
+    }
+
+    private TournamentSnapshotDocument loadLocalSnapshot(String snapshotId) {
+        try {
+            String fileName = switch (snapshotId) {
+                case "MUNDIAL_MATCHES_KNOCKOUTS" -> "test-snapshots/MUNDIAL_MATCHES_KNOCKOUTS.json";
+                case "MUNDIAL_STANDINGS" -> "test-snapshots/standings_mundial.json";
+                case "EUROCOPA_MATCHES_KNOCKOUTS" -> "test-snapshots/EUROCOPA_MATCHES_KNOCKOUTS.json";
+                case "EUROCOPA_STANDINGS" -> "test-snapshots/EUROCOPA_STANDINGS.json";
+                default -> throw new RuntimeException("No hay snapshot local para " + snapshotId);
+            };
+
+            ObjectMapper objectMapper = new ObjectMapper();
+            objectMapper.findAndRegisterModules();
+            objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+            InputStream inputStream = getClass().getClassLoader().getResourceAsStream(fileName);
+
+            if (inputStream == null) {
+                throw new RuntimeException("No se encuentra el archivo " + fileName);
+            }
+
+            return objectMapper.readValue(inputStream, TournamentSnapshotDocument.class);
+
+        } catch (Exception e) {
+            throw new RuntimeException("Error cargando snapshot local " + snapshotId, e);
+        }
     }
 }

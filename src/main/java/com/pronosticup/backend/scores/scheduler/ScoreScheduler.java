@@ -35,9 +35,9 @@ public class ScoreScheduler {
     /**
      * lanzo el batch de puntuación cada cinco minutos.
      */
-    @Scheduled(initialDelay = 300000, fixedDelay = 300000)
+    /*@Scheduled(initialDelay = 300000, fixedDelay = 300000)
     public void calculateEveryFiveMinutes() {
         scoreBatchLogger.info("Lanzando cálculo programado de puntuaciones");
         scoreBatchService.calculateScoresBatchForAllSupportedTournaments();
-    }
+    }*/
 }
