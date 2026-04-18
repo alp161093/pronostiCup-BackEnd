@@ -673,66 +673,85 @@ public class ScoreBatchService {
                                                  Map<String, Object> predictedKoMatch,
                                                  Map<String, List<Map<String, Object>>> officialMatchesByStage) {
 
-        List<Map<String, Object>> officialFinals = officialMatchesByStage.get("FINAL");
+        private Integer calculateFinalChampionPoints(Pronostic pronostic,
+                Map<String, Object> predictedKoMatch,
+                Map<String, List<Map<String, Object>>> officialMatchesByStage) {
 
-        if (officialFinals == null || officialFinals.isEmpty()) {
-            resetKoMatchPoints(predictedKoMatch);
-            return 0;
-        }
+            List<Map<String, Object>> officialFinals = officialMatchesByStage.get("FINAL");
 
-        Map<String, Object> officialFinal = officialFinals.get(0);
-        Map<String, Object> score = scoreService.getMap(officialFinal, "score");
-        String winner = scoreService.getString(score, "winner");
-
-        if (winner == null || winner.isBlank()) {
-            resetKoMatchPoints(predictedKoMatch);
-            return 0;
-        }
-
-        Map<String, Object> officialHomeTeam = scoreService.getMap(officialFinal, "homeTeam");
-        Map<String, Object> officialAwayTeam = scoreService.getMap(officialFinal, "awayTeam");
-
-        String officialHomeName = scoreService.getString(officialHomeTeam, "name");
-        String officialAwayName = scoreService.getString(officialAwayTeam, "name");
-
-        String championName = null;
-
-        if ("HOME_TEAM".equalsIgnoreCase(winner)) {
-            championName = officialHomeName;
-        } else if ("AWAY_TEAM".equalsIgnoreCase(winner)) {
-            championName = officialAwayName;
-        }
-
-        if (championName == null) {
-            resetKoMatchPoints(predictedKoMatch);
-            return 0;
-        }
-
-        Map<String, Object> home = scoreService.getMap(predictedKoMatch, "home");
-        Map<String, Object> away = scoreService.getMap(predictedKoMatch, "away");
-
-        String predictedHomeTeam = extractTeamNameFromKnockoutSide(home);
-        String predictedAwayTeam = extractTeamNameFromKnockoutSide(away);
-        String predictedChampion = extractChampionTeamName(pronostic, predictedKoMatch);
-
-        int homePoints = 0;
-        int awayPoints = 0;
-
-        if (predictedChampion != null && Objects.equals(predictedChampion, championName)) {
-            if (Objects.equals(predictedHomeTeam, championName)) {
-                homePoints = 1500;
-            } else if (Objects.equals(predictedAwayTeam, championName)) {
-                awayPoints = 1500;
+            if (officialFinals == null || officialFinals.isEmpty()) {
+                resetKoMatchPoints(predictedKoMatch);
+                return 0;
             }
-        }
 
-        int totalPoints = homePoints + awayPoints;
+            Map<String, Object> officialFinal = officialFinals.get(0);
 
-        predictedKoMatch.put("homeMatchPoints", homePoints);
-        predictedKoMatch.put("awayMatchPoints", awayPoints);
-        predictedKoMatch.put("matchPoints", totalPoints);
+            Map<String, Object> officialHomeTeam = scoreService.getMap(officialFinal, "homeTeam");
+            Map<String, Object> officialAwayTeam = scoreService.getMap(officialFinal, "awayTeam");
 
-        return totalPoints;
+            String officialHomeName = scoreService.getString(officialHomeTeam, "name");
+            String officialAwayName = scoreService.getString(officialAwayTeam, "name");
+
+            if (officialHomeName == null || officialAwayName == null) {
+                resetKoMatchPoints(predictedKoMatch);
+                return 0;
+            }
+
+            Map<String, Object> home = scoreService.getMap(predictedKoMatch, "home");
+            Map<String, Object> away = scoreService.getMap(predictedKoMatch, "away");
+
+            String predictedHomeTeam = extractTeamNameFromKnockoutSide(home);
+            String predictedAwayTeam = extractTeamNameFromKnockoutSide(away);
+
+            int homePoints = 0;
+            int awayPoints = 0;
+
+            // 800 puntos por cada finalista acertado
+            if (Objects.equals(predictedHomeTeam, officialHomeName) || Objects.equals(predictedHomeTeam, officialAwayName)) {
+                homePoints += 800;
+            }
+
+            if (Objects.equals(predictedAwayTeam, officialHomeName) || Objects.equals(predictedAwayTeam, officialAwayName)) {
+                awayPoints += 800;
+            }
+
+            Map<String, Object> score = scoreService.getMap(officialFinal, "score");
+            String winner = scoreService.getString(score, "winner");
+
+            String championName = null;
+
+            if ("HOME_TEAM".equalsIgnoreCase(winner)) {
+                championName = officialHomeName;
+            } else if ("AWAY_TEAM".equalsIgnoreCase(winner)) {
+                championName = officialAwayName;
+            }
+
+            if (championName == null) {
+                int totalPoints = homePoints + awayPoints;
+                predictedKoMatch.put("homeMatchPoints", homePoints);
+                predictedKoMatch.put("awayMatchPoints", awayPoints);
+                predictedKoMatch.put("matchPoints", totalPoints);
+                return totalPoints;
+            }
+
+            String predictedChampion = extractChampionTeamName(pronostic, predictedKoMatch);
+
+            // 1500 extra por acertar el campeón
+            if (predictedChampion != null && Objects.equals(predictedChampion, championName)) {
+                if (Objects.equals(predictedHomeTeam, championName)) {
+                    homePoints += 1500;
+                } else if (Objects.equals(predictedAwayTeam, championName)) {
+                    awayPoints += 1500;
+                }
+            }
+
+            int totalPoints = homePoints + awayPoints;
+
+            predictedKoMatch.put("homeMatchPoints", homePoints);
+            predictedKoMatch.put("awayMatchPoints", awayPoints);
+            predictedKoMatch.put("matchPoints", totalPoints);
+
+            return totalPoints;
     }
 
     /**
