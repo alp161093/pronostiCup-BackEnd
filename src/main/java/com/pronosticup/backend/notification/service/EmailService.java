@@ -1,6 +1,7 @@
 package com.pronosticup.backend.notification.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -13,6 +14,7 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class EmailService {
 
     private final RestClient.Builder restClientBuilder;
@@ -36,6 +38,27 @@ public class EmailService {
             List<EmailAttachment> attachments
     ) {
         try {
+            log.info("[EMAIL] Inicio sendEmailWithAttachments | to={} | subject={}", to, subject);
+            log.info("[EMAIL] Config | brevoApiUrl={} | from={} | apiKeyPresent={}",
+                    brevoApiUrl,
+                    from,
+                    brevoApiKey != null && !brevoApiKey.isBlank());
+
+            if (attachments == null) {
+                log.warn("[EMAIL] attachments viene null, lo convierto a lista vacía");
+                attachments = List.of();
+            }
+
+            log.info("[EMAIL] Número de adjuntos={}", attachments.size());
+            for (int i = 0; i < attachments.size(); i++) {
+                EmailAttachment a = attachments.get(i);
+                log.info("[EMAIL] Adjunto {} | name={} | bytes={} | contentType={}",
+                        i + 1,
+                        a.fileName(),
+                        a.content() != null ? a.content().length : 0,
+                        a.contentType());
+            }
+
             RestClient client = restClientBuilder.build();
 
             BrevoRequest request = new BrevoRequest(
@@ -51,6 +74,9 @@ public class EmailService {
                             .toList()
             );
 
+            log.info("[EMAIL] Request Brevo construida correctamente | to={} | attachments={}",
+                    to, attachments.size());
+
             client.post()
                     .uri(brevoApiUrl)
                     .header("api-key", brevoApiKey)
@@ -59,10 +85,16 @@ public class EmailService {
                     .retrieve()
                     .toBodilessEntity();
 
+            log.info("[EMAIL] Enviado correctamente con Brevo | to={}", to);
+
         } catch (RestClientResponseException e) {
             String bodyError = e.getResponseBodyAsString(StandardCharsets.UTF_8);
+            log.error("[EMAIL] Error Brevo HTTP | to={} | status={} | responseBody={}",
+                    to, e.getStatusCode(), bodyError, e);
             throw new RuntimeException("Error Brevo: " + bodyError, e);
         } catch (Exception e) {
+            log.error("[EMAIL] Error general enviando email | to={} | message={}",
+                    to, e.getMessage(), e);
             throw new RuntimeException("Error enviando email: " + e.getMessage(), e);
         }
     }
@@ -71,12 +103,16 @@ public class EmailService {
      * Email simple
      */
     public void sendSimpleEmail(String to, String subject, String body) {
-        sendEmailWithAttachments(to, subject, body, List.of());
+        try {
+            log.info("[EMAIL] Inicio sendSimpleEmail | to={} | subject={}", to, subject);
+            sendEmailWithAttachments(to, subject, body, List.of());
+            log.info("[EMAIL] sendSimpleEmail completado correctamente | to={}", to);
+        } catch (Exception e) {
+            log.error("[EMAIL] Error en sendSimpleEmail | to={} | subject={}", to, subject, e);
+            throw e;
+        }
     }
 
-    /**
-     * Mantengo tu record tal cual
-     */
     public record EmailAttachment(
             String fileName,
             byte[] content,

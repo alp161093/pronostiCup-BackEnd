@@ -27,23 +27,35 @@ public class PronosticReceiptService {
      */
     public void sendEncryptedPronosticReceipt(Object pronostic, String userEmail, String leagueName, String tournament, String alias ) {
         try {
+            log.info("[RECEIPT] Inicio envío comprobante alta | email={} | liga={} | torneo={} | alias={}",
+                    userEmail, leagueName, tournament, alias);
+
             Pronostic pronosticDoc = (Pronostic) pronostic;
 
             String json = objectMapper.writeValueAsString(pronosticDoc);
+            log.info("[RECEIPT] JSON generado correctamente | length={}", json.length());
+
             String encrypted = encryptionService.encrypt(json);
+            log.info("[RECEIPT] Contenido cifrado correctamente | encryptedLength={}", encrypted.length());
 
             String txtContent = buildFileContent(encrypted, leagueName, tournament, alias);
+            log.info("[RECEIPT] TXT adjunto generado | txtLength={}", txtContent.length());
+
             byte[] pdfContent = pronosticPdfService.generatePronosticPdf(
                     pronosticDoc,
                     "Pronóstico registrado"
             );
+            log.info("[RECEIPT] PDF generado | pdfBytes={}", pdfContent.length);
 
             String subject = "🏆 PronostiCup | Pronóstico confirmado";
             String body = buildEmailBody(leagueName, tournament, alias);
 
             String txtFileName = "pronostico-encriptado-" + tournament + "-" + alias + ".txt";
             String pdfFileName = "pronostico-" + tournament + "-" + alias + ".pdf";
-            log.info("Enviando comprobante de pronóstico a {}", userEmail);
+
+            log.info("[RECEIPT] Preparando envío a {} con archivos [{}] y [{}]",
+                    userEmail, txtFileName, pdfFileName);
+
             emailService.sendEmailWithAttachments(
                     userEmail,
                     subject,
@@ -62,8 +74,11 @@ public class PronosticReceiptService {
                     )
             );
 
+            log.info("[RECEIPT] Envío finalizado correctamente | email={}", userEmail);
+
         } catch (Exception e) {
-            log.error("Error enviando comprobante de pronóstico", e);
+            log.error("[RECEIPT] Error enviando comprobante de pronóstico | email={} | liga={} | torneo={} | alias={}",
+                    userEmail, leagueName, tournament, alias, e);
         }
     }
 
@@ -71,25 +86,37 @@ public class PronosticReceiptService {
      * Genero el comprobante cifrado del pronóstico actualizado y lo envío por email
      * junto con un PDF legible del contenido actualizado.
      */
-    public void sendUpdatedPronosticReceipt( Object pronostic, String userEmail, String leagueName, String tournament, String alias ) {
+    public void sendUpdatedPronosticReceipt(Object pronostic, String userEmail, String leagueName, String tournament, String alias ) {
         try {
+            log.info("[RECEIPT] Inicio envío comprobante actualización | email={} | liga={} | torneo={} | alias={}",
+                    userEmail, leagueName, tournament, alias);
+
             Pronostic pronosticDoc = (Pronostic) pronostic;
 
             String json = objectMapper.writeValueAsString(pronosticDoc);
+            log.info("[RECEIPT] JSON actualización generado correctamente | length={}", json.length());
+
             String encrypted = encryptionService.encrypt(json);
+            log.info("[RECEIPT] Contenido actualización cifrado correctamente | encryptedLength={}", encrypted.length());
 
             String txtContent = buildUpdatedFileContent(encrypted, leagueName, tournament, alias);
+            log.info("[RECEIPT] TXT actualización generado | txtLength={}", txtContent.length());
+
             byte[] pdfContent = pronosticPdfService.generatePronosticPdf(
                     pronosticDoc,
                     "Pronóstico actualizado"
             );
+            log.info("[RECEIPT] PDF actualización generado | pdfBytes={}", pdfContent.length);
 
             String subject = "✏️ PronostiCup | Pronóstico actualizado";
             String body = buildUpdatedEmailBody(leagueName, tournament, alias);
 
             String txtFileName = "pronostico-actualizado-encriptado-" + tournament + "-" + alias + ".txt";
             String pdfFileName = "pronostico-actualizado-" + tournament + "-" + alias + ".pdf";
-            log.info("Enviando comprobante de pronóstico a {}", userEmail);
+
+            log.info("[RECEIPT] Preparando envío actualización a {} con archivos [{}] y [{}]",
+                    userEmail, txtFileName, pdfFileName);
+
             emailService.sendEmailWithAttachments(
                     userEmail,
                     subject,
@@ -108,8 +135,11 @@ public class PronosticReceiptService {
                     )
             );
 
+            log.info("[RECEIPT] Envío actualización finalizado correctamente | email={}", userEmail);
+
         } catch (Exception e) {
-            log.error("Error enviando comprobante de actualización del pronóstico", e);
+            log.error("[RECEIPT] Error enviando comprobante de actualización del pronóstico | email={} | liga={} | torneo={} | alias={}",
+                    userEmail, leagueName, tournament, alias, e);
         }
     }
 
@@ -119,8 +149,10 @@ public class PronosticReceiptService {
      */
     public void sendPronosticAcceptedEmail(String userEmail, String leagueName, String tournament, String alias) {
         try {
-            String subject = "✅ PronostiCup | Aceptado en liga";
+            log.info("[RECEIPT] Inicio envío aceptación | email={} | liga={} | torneo={} | alias={}",
+                    userEmail, leagueName, tournament, alias);
 
+            String subject = "✅ PronostiCup | Aceptado en liga";
             String body = buildAcceptedEmailBody(leagueName, tournament, alias);
 
             emailService.sendSimpleEmail(
@@ -129,8 +161,11 @@ public class PronosticReceiptService {
                     body
             );
 
+            log.info("[RECEIPT] Email de aceptación enviado correctamente | email={}", userEmail);
+
         } catch (Exception e) {
-            log.error("Error enviando email de aceptación del pronóstico", e);
+            log.error("[RECEIPT] Error enviando email de aceptación del pronóstico | email={} | liga={} | torneo={} | alias={}",
+                    userEmail, leagueName, tournament, alias, e);
         }
     }
 
@@ -140,8 +175,10 @@ public class PronosticReceiptService {
      */
     public void sendPronosticRejectedEmail(String userEmail, String leagueName, String tournament, String alias ) {
         try {
-            String subject = "❌ PronostiCup | No aceptado";
+            log.info("[RECEIPT] Inicio envío rechazo | email={} | liga={} | torneo={} | alias={}",
+                    userEmail, leagueName, tournament, alias);
 
+            String subject = "❌ PronostiCup | No aceptado";
             String body = buildRejectedEmailBody(leagueName, tournament, alias);
 
             emailService.sendSimpleEmail(
@@ -150,14 +187,14 @@ public class PronosticReceiptService {
                     body
             );
 
+            log.info("[RECEIPT] Email de rechazo enviado correctamente | email={}", userEmail);
+
         } catch (Exception e) {
-            log.error("Error enviando email de rechazo del pronóstico", e);
+            log.error("[RECEIPT] Error enviando email de rechazo del pronóstico | email={} | liga={} | torneo={} | alias={}",
+                    userEmail, leagueName, tournament, alias, e);
         }
     }
 
-    /**
-     * Construyo el contenido del fichero adjunto.
-     */
     private String buildFileContent(String encrypted, String leagueName, String tournament, String alias) {
         return "PronostiCup - Comprobante cifrado de pronóstico\n" +
                 "Torneo: " + tournament + "\n" +
@@ -168,9 +205,6 @@ public class PronosticReceiptService {
                 encrypted;
     }
 
-    /**
-     * Construyo el cuerpo del email.
-     */
     private String buildEmailBody(String leagueName, String tournament, String alias) {
         return """
         <div style="font-family: Arial, Helvetica, sans-serif; max-width: 640px; margin: 0 auto; color: #1f2937; background: #ffffff;">
@@ -224,9 +258,6 @@ public class PronosticReceiptService {
         """.formatted(leagueName, tournament.toUpperCase(), alias);
     }
 
-    /**
-     * Construyo el contenido del fichero adjunto para una actualización.
-     */
     private String buildUpdatedFileContent(String encrypted, String leagueName, String tournament, String alias) {
         return "PronostiCup - Comprobante cifrado de pronóstico actualizado\n" +
                 "Torneo: " + tournament + "\n" +
@@ -237,9 +268,6 @@ public class PronosticReceiptService {
                 encrypted;
     }
 
-    /**
-     * Construyo el cuerpo del email para una actualización.
-     */
     private String buildUpdatedEmailBody(String leagueName, String tournament, String alias) {
         return """
         <div style="font-family: Arial, Helvetica, sans-serif; max-width: 640px; margin: 0 auto; color: #1f2937; background: #ffffff;">
@@ -275,9 +303,6 @@ public class PronosticReceiptService {
         """.formatted(leagueName, tournament.toUpperCase(), alias);
     }
 
-    /**
-     * Construyo el cuerpo del email cuando el pronóstico ha sido aceptado.
-     */
     private String buildAcceptedEmailBody(String leagueName, String tournament, String alias) {
         return """
         <div style="font-family: Arial, Helvetica, sans-serif; max-width: 640px; margin: 0 auto; color: #1f2937; background: #ffffff;">
@@ -313,9 +338,6 @@ public class PronosticReceiptService {
         """.formatted(leagueName, tournament.toUpperCase(), alias);
     }
 
-    /**
-     * Construyo el cuerpo del email cuando el pronóstico ha sido rechazado.
-     */
     private String buildRejectedEmailBody(String leagueName, String tournament, String alias) {
         return """
         <div style="font-family: Arial, Helvetica, sans-serif; max-width: 640px; margin: 0 auto; color: #1f2937; background: #ffffff;">
