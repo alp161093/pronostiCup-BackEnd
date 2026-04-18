@@ -17,8 +17,7 @@ public class CorsConfig {
 
         configuration.setAllowedOrigins(List.of(
                 "http://localhost:4200",
-                "https://tu-frontend.vercel.app",
-                "https://www.tudominio.com"
+                "https://pronosticup.onrender.com"
         ));
 
         configuration.setAllowedMethods(List.of(
