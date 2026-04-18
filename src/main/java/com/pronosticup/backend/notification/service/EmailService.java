@@ -2,26 +2,32 @@ package com.pronosticup.backend.notification.service;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
-import jakarta.mail.internet.MimeMessage;
-import org.springframework.mail.javamail.MimeMessageHelper;
-import org.springframework.core.io.ByteArrayResource;
-
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 
 @Service
 @RequiredArgsConstructor
 public class EmailService {
 
-    private final JavaMailSender mailSender;
+    private final RestClient.Builder restClientBuilder;
+
+    @Value("${brevo.api.url}")
+    private String brevoApiUrl;
+
+    @Value("${brevo.api.key}")
+    private String brevoApiKey;
 
     @Value("${app.mail.from}")
     private String from;
 
     /**
-     * Envío un email con varios adjuntos binarios.
+     * Email con adjuntos
      */
     public void sendEmailWithAttachments(
             String to,
@@ -30,86 +36,64 @@ public class EmailService {
             List<EmailAttachment> attachments
     ) {
         try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true);
+            RestClient client = restClientBuilder.build();
 
-            helper.setFrom(from);
-            helper.setTo(to);
-            helper.setSubject(subject);
-            helper.setText(body, false);
-
-            for (EmailAttachment attachment : attachments) {
-                helper.addAttachment(
-                        attachment.fileName(),
-                        new ByteArrayResource(attachment.content()),
-                        attachment.contentType()
-                );
-            }
-
-            mailSender.send(message);
-
-        } catch (Exception e) {
-            throw new RuntimeException("Error enviando email a " + to + ": " + e.getMessage(), e);
-        }
-    }
-
-    /**
-     * Envío un email con un único adjunto tipo texto.
-     */
-    public void sendEmailWithAttachment(
-            String to,
-            String subject,
-            String body,
-            String fileName,
-            String fileContent
-    ) {
-        try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true);
-
-            helper.setFrom(from);
-            helper.setTo(to);
-            helper.setSubject(subject);
-            helper.setText(body, false);
-
-            helper.addAttachment(
-                    fileName,
-                    new ByteArrayResource(fileContent.getBytes())
+            BrevoRequest request = new BrevoRequest(
+                    new Sender(from, "PronostiCup"),
+                    List.of(new Recipient(to, null)),
+                    subject,
+                    body,
+                    attachments.stream()
+                            .map(a -> new Attachment(
+                                    a.fileName(),
+                                    Base64.getEncoder().encodeToString(a.content())
+                            ))
+                            .toList()
             );
 
-            mailSender.send(message);
+            client.post()
+                    .uri(brevoApiUrl)
+                    .header("api-key", brevoApiKey)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .toBodilessEntity();
 
+        } catch (RestClientResponseException e) {
+            String bodyError = e.getResponseBodyAsString(StandardCharsets.UTF_8);
+            throw new RuntimeException("Error Brevo: " + bodyError, e);
         } catch (Exception e) {
-            throw new RuntimeException("Error enviando email", e);
+            throw new RuntimeException("Error enviando email: " + e.getMessage(), e);
         }
     }
 
     /**
-     * Envío un email simple sin adjuntos.
+     * Email simple
      */
     public void sendSimpleEmail(String to, String subject, String body) {
-        try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, false);
-
-            helper.setFrom(from);
-            helper.setTo(to);
-            helper.setSubject(subject);
-            helper.setText(body, false);
-
-            mailSender.send(message);
-
-        } catch (Exception e) {
-            throw new RuntimeException("Error enviando email a " + to + ": " + e.getMessage(), e);
-        }
+        sendEmailWithAttachments(to, subject, body, List.of());
     }
 
     /**
-     * Represento un adjunto de email con su nombre, contenido y tipo MIME.
+     * Mantengo tu record tal cual
      */
     public record EmailAttachment(
             String fileName,
             byte[] content,
             String contentType
     ) {}
+
+    record BrevoRequest(
+            Sender sender,
+            List<Recipient> to,
+            String subject,
+            String htmlContent,
+            List<Attachment> attachment
+    ) {}
+
+    record Sender(String email, String name) {}
+
+    record Recipient(String email, String name) {}
+
+    record Attachment(String name, String content) {}
 }
