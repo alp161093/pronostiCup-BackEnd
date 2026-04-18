@@ -43,7 +43,7 @@ public class PronosticReceiptService {
 
             String txtFileName = "pronostico-encriptado-" + tournament + "-" + alias + ".txt";
             String pdfFileName = "pronostico-" + tournament + "-" + alias + ".pdf";
-
+            log.info("Enviando comprobante de pronóstico a {}", userEmail);
             emailService.sendEmailWithAttachments(
                     userEmail,
                     subject,
@@ -89,7 +89,7 @@ public class PronosticReceiptService {
 
             String txtFileName = "pronostico-actualizado-encriptado-" + tournament + "-" + alias + ".txt";
             String pdfFileName = "pronostico-actualizado-" + tournament + "-" + alias + ".pdf";
-
+            log.info("Enviando comprobante de pronóstico a {}", userEmail);
             emailService.sendEmailWithAttachments(
                     userEmail,
                     subject,
