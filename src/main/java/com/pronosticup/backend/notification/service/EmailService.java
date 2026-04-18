@@ -28,9 +28,6 @@ public class EmailService {
     @Value("${app.mail.from}")
     private String from;
 
-    /**
-     * Email con adjuntos
-     */
     public void sendEmailWithAttachments(
             String to,
             String subject,
@@ -59,23 +56,27 @@ public class EmailService {
                         a.contentType());
             }
 
-            RestClient client = restClientBuilder.build();
+            List<Attachment> brevoAttachments = attachments.isEmpty()
+                    ? null
+                    : attachments.stream()
+                    .map(a -> new Attachment(
+                            a.fileName(),
+                            Base64.getEncoder().encodeToString(a.content())
+                    ))
+                    .toList();
 
             BrevoRequest request = new BrevoRequest(
                     new Sender(from, "PronostiCup"),
                     List.of(new Recipient(to, null)),
                     subject,
                     body,
-                    attachments.stream()
-                            .map(a -> new Attachment(
-                                    a.fileName(),
-                                    Base64.getEncoder().encodeToString(a.content())
-                            ))
-                            .toList()
+                    brevoAttachments
             );
 
             log.info("[EMAIL] Request Brevo construida correctamente | to={} | attachments={}",
                     to, attachments.size());
+
+            RestClient client = restClientBuilder.build();
 
             client.post()
                     .uri(brevoApiUrl)
@@ -99,13 +100,10 @@ public class EmailService {
         }
     }
 
-    /**
-     * Email simple
-     */
     public void sendSimpleEmail(String to, String subject, String body) {
         try {
             log.info("[EMAIL] Inicio sendSimpleEmail | to={} | subject={}", to, subject);
-            sendEmailWithAttachments(to, subject, body, List.of());
+            sendEmailWithAttachments(to, subject, body, null);
             log.info("[EMAIL] sendSimpleEmail completado correctamente | to={}", to);
         } catch (Exception e) {
             log.error("[EMAIL] Error en sendSimpleEmail | to={} | subject={}", to, subject, e);

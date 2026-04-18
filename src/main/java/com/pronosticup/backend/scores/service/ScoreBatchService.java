@@ -50,9 +50,9 @@ public class ScoreBatchService {
         Instant firstDate = scoreService.getFirstDateFromMatchesPayload(matchesPayload);
         boolean shouldCalculate = scoreService.isInsideCalculationWindow(firstDate);
         //alp:IMPORTANTE QUITAR ESTE IF PORQUE SOLO SON PARA PRUEBAS EN CALIENTE
-        /*if(!shouldCalculate && tournament.equals("mundial")) {
+        if(!shouldCalculate && tournament.equals("mundial")) {
             shouldCalculate = true;
-        }*/
+        }
         if (!shouldCalculate) {
             scoreBatchLogger.info(
                     "No ejecuto el batch del torneo {} porque la fecha actual está fuera de la ventana válida",
