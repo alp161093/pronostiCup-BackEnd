@@ -3,8 +3,6 @@ package com.pronosticup.backend.tournaments.scheduler;
 import com.pronosticup.backend.tournaments.service.TournamentSyncService;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -12,40 +10,36 @@ import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
-@Slf4j
-@ConditionalOnProperty(
-        value = "app.schedulers.tournament-sync.enabled",
-        havingValue = "true",
-        matchIfMissing = true
-)
 public class TournamentScheduler {
 
     private final TournamentSyncService tournamentSyncService;
 
     @PostConstruct
     public void init() {
-        log.info("[TOURNAMENT_SCHEDULER] Bean creado");
+        System.out.println("### TOURNAMENT_SCHEDULER Bean creado ###");
     }
 
     @EventListener(ApplicationReadyEvent.class)
     public void syncOnStartup() {
-        log.info("[TOURNAMENT_SCHEDULER] Lanzando sync inicial al arrancar");
+        System.out.println("### TOURNAMENT_SCHEDULER syncOnStartup INICIO ###");
         try {
             tournamentSyncService.syncAll();
-            log.info("[TOURNAMENT_SCHEDULER] Finalizado sync inicial al arrancar");
+            System.out.println("### TOURNAMENT_SCHEDULER syncOnStartup FIN ###");
         } catch (Exception ex) {
-            log.error("[TOURNAMENT_SCHEDULER] Error en sync inicial: {}", ex.getMessage(), ex);
+            System.out.println("### TOURNAMENT_SCHEDULER syncOnStartup ERROR: " + ex.getMessage() + " ###");
+            ex.printStackTrace();
         }
     }
 
     @Scheduled(initialDelay = 10000, fixedDelay = 300000)
     public void syncEveryFiveMinutes() {
-        log.info("[TOURNAMENT_SCHEDULER] Lanzando sync programado");
+        System.out.println("### TOURNAMENT_SCHEDULER sync programado INICIO ###");
         try {
             tournamentSyncService.syncAll();
-            log.info("[TOURNAMENT_SCHEDULER] Finalizado sync programado");
+            System.out.println("### TOURNAMENT_SCHEDULER sync programado FIN ###");
         } catch (Exception ex) {
-            log.error("[TOURNAMENT_SCHEDULER] Error en sync programado: {}", ex.getMessage(), ex);
+            System.out.println("### TOURNAMENT_SCHEDULER sync programado ERROR: " + ex.getMessage() + " ###");
+            ex.printStackTrace();
         }
     }
 }
