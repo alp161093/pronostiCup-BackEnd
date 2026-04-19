@@ -47,7 +47,7 @@ public class ScoreBatchService {
         /*if (!shouldCalculate && tournament.equals("mundial")) {
             shouldCalculate = true;
         }*/
-        scoreBatchLogger.info(
+        System.out.println(
                 "[SCORE_BATCH] Ventana de cálculo torneo {} -> firstDate={} lastDate={} shouldCalculate={}",
                 normalizedTournament,
                 firstDate,
