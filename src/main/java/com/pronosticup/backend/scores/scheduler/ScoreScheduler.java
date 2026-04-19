@@ -1,8 +1,7 @@
 package com.pronosticup.backend.scores.scheduler;
 
 import com.pronosticup.backend.scores.service.ScoreBatchService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -19,25 +18,34 @@ import org.springframework.stereotype.Component;
 )
 public class ScoreScheduler {
 
-    private static final Logger scoreBatchLogger = LoggerFactory.getLogger("SCORE_BATCH");
-
     private final ScoreBatchService scoreBatchService;
 
-    /**
-     * lanzo un cálculo inicial al arrancar la aplicación para no depender solo del scheduler.
-     */
-    @EventListener(ApplicationReadyEvent.class)
-    public void calculateOnStartup() {
-        scoreBatchLogger.info("Lanzando cálculo inicial de puntuaciones al arrancar la aplicación");
-        scoreBatchService.calculateScoresBatchForAllSupportedTournaments();
+    @PostConstruct
+    public void init() {
+        System.out.println("### SCORE_SCHEDULER Bean creado ###");
     }
 
-    /**
-     * lanzo el batch de puntuación cada cinco minutos.
-     */
+    @EventListener(ApplicationReadyEvent.class)
+    public void calculateOnStartup() {
+        System.out.println("### SCORE_SCHEDULER calculateOnStartup INICIO ###");
+        try {
+            scoreBatchService.calculateScoresBatchForAllSupportedTournaments();
+            System.out.println("### SCORE_SCHEDULER calculateOnStartup FIN ###");
+        } catch (Exception ex) {
+            System.out.println("### SCORE_SCHEDULER calculateOnStartup ERROR: " + ex.getMessage() + " ###");
+            ex.printStackTrace();
+        }
+    }
+
     @Scheduled(initialDelay = 60000, fixedDelay = 300000)
     public void calculateEveryFiveMinutes() {
-        scoreBatchLogger.info("Lanzando cálculo programado de puntuaciones");
-        scoreBatchService.calculateScoresBatchForAllSupportedTournaments();
+        System.out.println("### SCORE_SCHEDULER cálculo programado INICIO ###");
+        try {
+            scoreBatchService.calculateScoresBatchForAllSupportedTournaments();
+            System.out.println("### SCORE_SCHEDULER cálculo programado FIN ###");
+        } catch (Exception ex) {
+            System.out.println("### SCORE_SCHEDULER cálculo programado ERROR: " + ex.getMessage() + " ###");
+            ex.printStackTrace();
+        }
     }
 }

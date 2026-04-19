@@ -4,9 +4,9 @@ import com.pronosticup.backend.leagues.entity.League;
 import com.pronosticup.backend.leagues.entity.LeagueMember;
 import com.pronosticup.backend.pronostics.entity.Pronostic;
 import com.pronosticup.backend.tournaments.model.TournamentSnapshotDocument;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -21,73 +21,69 @@ public class ScoreBatchService {
 
     private final ScoreService scoreService;
 
-    /**
-     * lanzo el cálculo batch de todos los torneos soportados por la aplicación.
-     */
     public void calculateScoresBatchForAllSupportedTournaments() {
+        scoreBatchLogger.info("[SCORE_BATCH] Inicio cálculo batch global");
         calculateScoresBatchForTournament("mundial");
         calculateScoresBatchForTournament("eurocopa");
+        scoreBatchLogger.info("[SCORE_BATCH] Fin cálculo batch global");
     }
 
-    /**
-     * orquesto el batch completo de cálculo de puntuaciones del torneo indicado.
-     * Primero valido si estoy dentro de la ventana de cálculo y, si procede,
-     * recorro las ligas y sus pronósticos confirmados para recalcular sus puntos.
-     */
     public void calculateScoresBatchForTournament(String tournament) {
         String normalizedTournament = scoreService.normalizeTournament(tournament);
 
-        scoreBatchLogger.info("Iniciando batch de puntuación para torneo {}", normalizedTournament);
+        scoreBatchLogger.info("[SCORE_BATCH] Iniciando batch de puntuación para torneo {}", normalizedTournament);
 
-        //   cargo el snapshot de partidos porque su fecha first me dice si ahora toca calcular.
         TournamentSnapshotDocument matchesSnapshot = scoreService.getMatchesKnockoutsSnapshot(normalizedTournament);
         Map<String, Object> matchesPayload = scoreService.getPayloadOrFail(
                 matchesSnapshot,
                 normalizedTournament + "_MATCHES_KNOCKOUTS"
         );
 
-        //   obtengo la fecha de referencia del torneo y compruebo si estoy dentro de la ventana válida.
         Instant firstDate = scoreService.getFirstDateFromMatchesPayload(matchesPayload);
-        boolean shouldCalculate = scoreService.isInsideCalculationWindow(firstDate);
+        Instant lastDate = scoreService.getLastDateFromMatchesPayload(matchesPayload);
+
+        boolean shouldCalculate = scoreService.isInsideCalculationWindow(firstDate, lastDate);
         //alp:IMPORTANTE QUITAR ESTE IF PORQUE SOLO SON PARA PRUEBAS EN CALIENTE
-        if (!shouldCalculate && tournament.equals("mundial")) {
+        /*if (!shouldCalculate && tournament.equals("mundial")) {
             shouldCalculate = true;
-        }
+        }*/
+        scoreBatchLogger.info(
+                "[SCORE_BATCH] Ventana de cálculo torneo {} -> firstDate={} lastDate={} shouldCalculate={}",
+                normalizedTournament,
+                firstDate,
+                lastDate,
+                shouldCalculate
+        );
+
         if (!shouldCalculate) {
             scoreBatchLogger.info(
-                    "No ejecuto el batch del torneo {} porque la fecha actual está fuera de la ventana válida",
+                    "[SCORE_BATCH] No ejecuto el batch del torneo {} porque la fecha actual está fuera de la ventana válida",
                     normalizedTournament
             );
             return;
         }
 
-        //   cargo también el snapshot de standings oficiales porque lo necesito para puntuar la clasificación.
         TournamentSnapshotDocument standingsSnapshot = scoreService.getStandingsSnapshot(normalizedTournament);
         Map<String, Object> standingsPayload = scoreService.getPayloadOrFail(
                 standingsSnapshot,
                 normalizedTournament + "_STANDINGS"
         );
 
-        //   busco las ligas del torneo que existían antes de la fecha límite del torneo.
         List<League> eligibleLeagues = scoreService.getEligibleLeagues(normalizedTournament, firstDate);
 
         scoreBatchLogger.info(
-                "Las ligas elegibles para puntuar del torneo {} son: {}",
+                "[SCORE_BATCH] Las ligas elegibles para puntuar del torneo {} son: {}",
                 normalizedTournament,
                 eligibleLeagues.stream().map(League::getId).toList()
         );
 
-        //   recorro una a una las ligas elegibles.
         for (League league : eligibleLeagues) {
             processLeague(normalizedTournament, league, matchesPayload, standingsPayload);
         }
 
-        scoreBatchLogger.info("Batch de puntuación finalizado correctamente para torneo {}", normalizedTournament);
+        scoreBatchLogger.info("[SCORE_BATCH] Batch de puntuación finalizado correctamente para torneo {}", normalizedTournament);
     }
 
-    /**
-     * proceso una liga concreta y recorro todos sus pronósticos confirmados.
-     */
     private void processLeague(String tournament,
                                League league,
                                Map<String, Object> matchesPayload,
@@ -97,13 +93,12 @@ public class ScoreBatchService {
             return;
         }
 
-        scoreBatchLogger.info("Procesando liga {} del torneo {}", league.getId(), tournament);
+        scoreBatchLogger.info("[SCORE_BATCH] Procesando liga {} del torneo {}", league.getId(), tournament);
 
-        //   traigo solo los miembros confirmados porque son los únicos que deben entrar en el cálculo.
         List<LeagueMember> confirmedMembers = scoreService.getConfirmedLeagueMembers(league.getId());
 
         scoreBatchLogger.info(
-                "La liga {} del torneo {} tiene los siguientes pronósticos confirmados: {}",
+                "[SCORE_BATCH] La liga {} del torneo {} tiene los siguientes pronósticos confirmados: {}",
                 league.getId(),
                 tournament,
                 confirmedMembers.stream()
@@ -112,15 +107,11 @@ public class ScoreBatchService {
                         .toList()
         );
 
-        //   recorro cada miembro confirmado y proceso su pronóstico asociado.
         for (LeagueMember member : confirmedMembers) {
             processLeagueMember(tournament, member, matchesPayload, standingsPayload);
         }
     }
 
-    /**
-     * proceso un miembro de liga confirmado y recalculo su pronóstico.
-     */
     private void processLeagueMember(String tournament,
                                      LeagueMember member,
                                      Map<String, Object> matchesPayload,
@@ -137,24 +128,22 @@ public class ScoreBatchService {
         }
 
         try {
-            //   cargo el pronóstico real desde Mongo para recalcular todos sus puntos.
             Pronostic pronostic = scoreService.getPronosticOrFail(pronosticId);
 
-            //   calculo todos los bloques de puntos y actualizo el total del pronóstico.
             Integer totalPoints = calculatePronosticTotalPoints(pronostic, matchesPayload, standingsPayload);
 
             pronostic.setTotalPoints(totalPoints);
             scoreService.savePronostic(pronostic);
 
             scoreBatchLogger.info(
-                    "Pronóstico {} recalculado correctamente con {} puntos para torneo {}",
+                    "[SCORE_BATCH] Pronóstico {} recalculado correctamente con {} puntos para torneo {}",
                     pronosticId,
                     totalPoints,
                     tournament
             );
         } catch (Exception e) {
             scoreBatchLogger.error(
-                    "Error recalculando el pronóstico {} del torneo {}: {}",
+                    "[SCORE_BATCH] Error recalculando el pronóstico {} del torneo {}: {}",
                     pronosticId,
                     tournament,
                     e.getMessage(),
@@ -163,29 +152,17 @@ public class ScoreBatchService {
         }
     }
 
-    /**
-     * recalculo el total completo de un pronóstico sumando todos los bloques de puntuación.
-     */
     private Integer calculatePronosticTotalPoints(Pronostic pronostic,
                                                   Map<String, Object> matchesPayload,
                                                   Map<String, Object> standingsPayload) {
 
-        //   calculo primero los puntos de los partidos de fase de grupos.
         int groupMatchPoints = calculateGroupStageMatchPoints(pronostic, matchesPayload);
-
-        //   calculo después los puntos del orden de clasificación de cada grupo.
         int groupStandingsPoints = calculateGroupStandingsPoints(pronostic, standingsPayload);
-
-        //   calculo por último los puntos de las rondas eliminatorias.
         int knockoutPoints = calculateKnockoutPoints(pronostic, matchesPayload);
 
         return groupMatchPoints + groupStandingsPoints + knockoutPoints;
     }
 
-    /**
-     * recorro todos los partidos de fase de grupos del pronóstico, comparo cada uno
-     * con su partido oficial y guardo el resultado en el atributo matchPoints del propio partido.
-     */
     @SuppressWarnings("unchecked")
     private Integer calculateGroupStageMatchPoints(Pronostic pronostic, Map<String, Object> matchesPayload) {
         int totalGroupMatchPoints = 0;
@@ -203,7 +180,6 @@ public class ScoreBatchService {
 
         List<Map<String, Object>> officialMatches = scoreService.getMapList(matchesPayload, "matches");
 
-        //   recorro cada grupo del pronóstico.
         for (Map.Entry<String, Object> entry : matchesByGroup.entrySet()) {
             Object rawMatches = entry.getValue();
 
@@ -211,7 +187,6 @@ public class ScoreBatchService {
                 continue;
             }
 
-            //   recorro partido a partido dentro del grupo.
             for (Object rawPredictedMatch : predictedMatches) {
                 if (!(rawPredictedMatch instanceof Map<?, ?>)) {
                     continue;
@@ -221,7 +196,6 @@ public class ScoreBatchService {
 
                 int pointsForMatch = calculateSingleGroupMatchPoints(predictedMatch, officialMatches);
 
-                //   escribo los puntos directamente sobre el propio partido del pronóstico.
                 predictedMatch.put("matchPoints", pointsForMatch);
 
                 totalGroupMatchPoints += pointsForMatch;
@@ -231,9 +205,6 @@ public class ScoreBatchService {
         return totalGroupMatchPoints;
     }
 
-    /**
-     * calculo los puntos de un único partido de fase de grupos.
-     */
     private Integer calculateSingleGroupMatchPoints(Map<String, Object> predictedMatch,
                                                     List<Map<String, Object>> officialMatches) {
 
@@ -253,7 +224,6 @@ public class ScoreBatchService {
 
         String officialGroup = "GROUP_" + groupKey;
 
-        //   localizo el partido oficial equivalente usando grupo, local y visitante.
         Map<String, Object> officialMatch = findOfficialGroupMatch(officialMatches, officialGroup, homeName, awayName);
 
         if (officialMatch == null) {
@@ -266,29 +236,24 @@ public class ScoreBatchService {
         Integer officialHomeGoals = scoreService.getInteger(fullTime, "home");
         Integer officialAwayGoals = scoreService.getInteger(fullTime, "away");
 
-        //   no puntúo si el resultado oficial todavía no existe.
         if (officialHomeGoals == null || officialAwayGoals == null) {
             return 0;
         }
 
         int points = 0;
 
-        //   sumo 10 puntos si acierto el ganador o el empate.
         if (sameMatchOutcome(predictedHomeGoals, predictedAwayGoals, officialHomeGoals, officialAwayGoals)) {
             points += 10;
         }
 
-        //   sumo 3 puntos por acertar los goles del local.
         if (Objects.equals(predictedHomeGoals, officialHomeGoals)) {
             points += 3;
         }
 
-        //   sumo 3 puntos por acertar los goles del visitante.
         if (Objects.equals(predictedAwayGoals, officialAwayGoals)) {
             points += 3;
         }
 
-        //   sumo 5 puntos extra si he acertado el marcador exacto.
         if (Objects.equals(predictedHomeGoals, officialHomeGoals)
                 && Objects.equals(predictedAwayGoals, officialAwayGoals)) {
             points += 5;
@@ -297,9 +262,6 @@ public class ScoreBatchService {
         return points;
     }
 
-    /**
-     * localizo el partido oficial de fase de grupos que corresponde con el partido del pronóstico.
-     */
     private Map<String, Object> findOfficialGroupMatch(List<Map<String, Object>> officialMatches,
                                                        String officialGroup,
                                                        String homeName,
@@ -324,9 +286,6 @@ public class ScoreBatchService {
         return null;
     }
 
-    /**
-     * compruebo si dos marcadores tienen el mismo desenlace: victoria local, empate o victoria visitante.
-     */
     private boolean sameMatchOutcome(Integer predictedHomeGoals,
                                      Integer predictedAwayGoals,
                                      Integer officialHomeGoals,
@@ -343,9 +302,6 @@ public class ScoreBatchService {
         return predictedOutcome == officialOutcome;
     }
 
-    /**
-     * calculo los puntos por acertar la posición final de cada equipo en su grupo.
-     */
     @SuppressWarnings("unchecked")
     private Integer calculateGroupStandingsPoints(Pronostic pronostic, Map<String, Object> standingsPayload) {
         int totalStandingsPoints = 0;
@@ -367,7 +323,6 @@ public class ScoreBatchService {
             return 0;
         }
 
-        //   recorro grupo a grupo del pronóstico.
         for (Map.Entry<String, Object> entry : standingsByGroup.entrySet()) {
             String groupKey = entry.getKey();
             Object rawPredictedTable = entry.getValue();
@@ -383,7 +338,6 @@ public class ScoreBatchService {
 
             List<Map<String, Object>> officialTable = scoreService.getMapList(officialGroupStanding, "table");
 
-            //   comparo posición a posición entre el pronóstico y la clasificación oficial.
             for (int i = 0; i < predictedTable.size() && i < officialTable.size(); i++) {
                 Object rawPredictedRow = predictedTable.get(i);
 
@@ -404,7 +358,6 @@ public class ScoreBatchService {
                 }
 
                 if (Objects.equals(predictedTeam, officialTeamName)) {
-                    //   sumo únicamente 15 puntos por acertar el puesto exacto del equipo.
                     totalStandingsPoints += 15;
                 }
             }
@@ -413,9 +366,6 @@ public class ScoreBatchService {
         return totalStandingsPoints;
     }
 
-    /**
-     * localizo el array oficial de standings contemplando posibles nombres de clave.
-     */
     private List<Map<String, Object>> findOfficialStandingsArray(Map<String, Object> standingsPayload) {
         List<Map<String, Object>> standings = scoreService.getMapList(standingsPayload, "standing");
 
@@ -432,9 +382,6 @@ public class ScoreBatchService {
         return List.of();
     }
 
-    /**
-     * localizo la clasificación oficial de un grupo concreto a partir de su clave, por ejemplo A o B.
-     */
     private Map<String, Object> findOfficialStandingByGroupKey(List<Map<String, Object>> officialStandings,
                                                                String groupKey) {
 
@@ -456,10 +403,6 @@ public class ScoreBatchService {
         return null;
     }
 
-    /**
-     * calculo los puntos de las rondas eliminatorias teniendo en cuenta solo
-     * qué equipo avanza en cada cruce, sin usar el número de goles.
-     */
     @SuppressWarnings("unchecked")
     private Integer calculateKnockoutPoints(Pronostic pronostic, Map<String, Object> matchesPayload) {
         if (pronostic == null || pronostic.getKnockouts() == null) {
@@ -475,7 +418,6 @@ public class ScoreBatchService {
 
         List<Map<String, Object>> officialMatches = scoreService.getMapList(matchesPayload, "matches");
 
-        //   agrupo primero los partidos oficiales por stage para poder saber qué equipos aparecen en la siguiente ronda.
         Map<String, List<Map<String, Object>>> officialMatchesByStage = officialMatches.stream()
                 .collect(Collectors.groupingBy(match -> {
                     String stage = scoreService.getString(match, "stage");
@@ -484,7 +426,6 @@ public class ScoreBatchService {
 
         int totalKnockoutPoints = 0;
 
-        //   recorro todos los partidos KO del pronóstico.
         for (Map<String, Object> predictedKoMatch : koMatches) {
             totalKnockoutPoints += calculateSingleKnockoutMatchPoints(pronostic, predictedKoMatch, officialMatchesByStage);
         }
@@ -492,9 +433,6 @@ public class ScoreBatchService {
         return totalKnockoutPoints;
     }
 
-    /**
-     * calculo los puntos de un único cruce eliminatorio del pronóstico.
-     */
     private Integer calculateSingleKnockoutMatchPoints(Pronostic pronostic,
                                                        Map<String, Object> predictedKoMatch,
                                                        Map<String, List<Map<String, Object>>> officialMatchesByStage) {
@@ -554,19 +492,12 @@ public class ScoreBatchService {
         return totalPoints;
     }
 
-    /**
-     * si no se puede puntuar una ronda, o falta info, o el partido es inválido, se deja el partido KO limpio y consistente
-     */
     private void resetKoMatchPoints(Map<String, Object> predictedKoMatch) {
         predictedKoMatch.put("homeMatchPoints", 0);
         predictedKoMatch.put("awayMatchPoints", 0);
         predictedKoMatch.put("matchPoints", 0);
     }
 
-    /**
-     * obtengo la ronda del partido KO contemplando tanto la clave round
-     * como una posible roundKey por compatibilidad futura.
-     */
     private String getKnockoutRound(Map<String, Object> predictedKoMatch) {
         String round = scoreService.getString(predictedKoMatch, "round");
 
@@ -577,9 +508,6 @@ public class ScoreBatchService {
         return scoreService.getString(predictedKoMatch, "roundKey");
     }
 
-    /**
-     * extraigo el nombre del equipo de un lado del cruce.
-     */
     private String extractTeamNameFromKnockoutSide(Map<String, Object> side) {
         if (side == null) {
             return null;
@@ -600,28 +528,6 @@ public class ScoreBatchService {
         return null;
     }
 
-    /**
-     * traduzco la ronda del pronóstico a la siguiente stage oficial que debo consultar.
-     */
-    private String getNextOfficialStage(String roundKey) {
-        if (roundKey == null) {
-            return null;
-        }
-
-        return switch (roundKey) {
-            case "LAST_32" -> "LAST_16";
-            case "LAST_16" -> "QUARTER_FINALS";
-            case "QUARTER_FINALS" -> "SEMI_FINALS";
-            case "SEMI_FINALS" -> "FINAL";
-            case "THIRD_PLACE" -> "THIRD_PLACE";
-            case "FINAL" -> "FINAL";
-            default -> null;
-        };
-    }
-
-    /**
-     * devuelvo los puntos por cada equipo acertado según la ronda del pronóstico.
-     */
     private int getPointsPerQualifiedTeam(String roundKey) {
         if (roundKey == null) {
             return 0;
@@ -638,11 +544,6 @@ public class ScoreBatchService {
         };
     }
 
-    /**
-     * obtengo los equipos que ya aparecen definidos en una ronda oficial.
-     * Si todavía hay cruces con equipos a null, no los tengo en cuenta porque
-     * esa clasificación aún no está resuelta y todavía no debo puntuarla.
-     */
     private List<String> getQualifiedTeamsInStage(List<Map<String, Object>> stageMatches) {
         if (stageMatches == null || stageMatches.isEmpty()) {
             return List.of();
@@ -669,11 +570,6 @@ public class ScoreBatchService {
         return teams;
     }
 
-    /**
-     * calculo los puntos de la final:
-     * - 800 por cada equipo acertado que realmente juega la final
-     * - 1500 extra por acertar el campeón
-     */
     private Integer calculateFinalChampionPoints(Pronostic pronostic,
                                                  Map<String, Object> predictedKoMatch,
                                                  Map<String, List<Map<String, Object>>> officialMatchesByStage) {
@@ -755,10 +651,6 @@ public class ScoreBatchService {
         return totalPoints;
     }
 
-    /**
-     * calculo los puntos del partido por el tercer puesto comprobando si los equipos
-     * pronosticados aparecen realmente en ese partido oficial.
-     */
     private Integer calculateThirdPlacePoints(Map<String, Object> predictedKoMatch,
                                               Map<String, List<Map<String, Object>>> officialMatchesByStage) {
 
@@ -827,12 +719,6 @@ public class ScoreBatchService {
         return totalPoints;
     }
 
-    /**
-     * Extraigo el nombre del equipo ganador de un partido KO del pronóstico.
-     * El winner se almacena como un objeto dentro del partido, por lo que necesito
-     * acceder a su campo "team" para obtener el nombre del equipo.
-     * Si el winner no existe o no tiene un nombre válido, devuelvo null para evitar errores en la puntuación.
-     */
     private String extractWinnerTeamName(Map<String, Object> predictedKoMatch) {
         if (predictedKoMatch == null) {
             return null;
@@ -852,18 +738,6 @@ public class ScoreBatchService {
         return null;
     }
 
-    /**
-     * Extraigo el nombre del campeón pronosticado.
-     * Primero intento obtenerlo del campo "champion" del bloque de knockouts, ya que es la fuente más fiable.
-     * Si no existe, hago fallback al partido de la final usando los equipos home/away para mantener compatibilidad con pronósticos antiguos.
-     */
-    /**
-     * extraigo el nombre del campeón pronosticado.
-     * Primero intento obtenerlo del campo "champion" del bloque de knockouts,
-     * ya que es la fuente más fiable.
-     * Si no existe, hago fallback al partido de la final usando los equipos
-     * home/away para mantener compatibilidad con pronósticos antiguos.
-     */
     private String extractChampionTeamName(Pronostic pronostic,
                                            Map<String, Object> predictedKoMatch) {
 
@@ -876,7 +750,6 @@ public class ScoreBatchService {
             }
         }
 
-        //   fallback: usar equipos de la final
         Map<String, Object> home = scoreService.getMap(predictedKoMatch, "home");
         Map<String, Object> away = scoreService.getMap(predictedKoMatch, "away");
 
@@ -888,40 +761,5 @@ public class ScoreBatchService {
         }
 
         return predictedAwayTeam;
-    }
-
-    private Map<String, Object> findOfficialKnockoutMatchInSameRound(List<Map<String, Object>> officialMatchesInSameRound,
-                                                                     String predictedHomeTeam,
-                                                                     String predictedAwayTeam) {
-
-        if (officialMatchesInSameRound == null || officialMatchesInSameRound.isEmpty()) {
-            return null;
-        }
-
-        for (Map<String, Object> officialMatch : officialMatchesInSameRound) {
-            Map<String, Object> officialHomeTeam = scoreService.getMap(officialMatch, "homeTeam");
-            Map<String, Object> officialAwayTeam = scoreService.getMap(officialMatch, "awayTeam");
-
-            String officialHomeName = scoreService.getString(officialHomeTeam, "name");
-            String officialAwayName = scoreService.getString(officialAwayTeam, "name");
-
-            if (officialHomeName == null || officialAwayName == null) {
-                continue;
-            }
-
-            boolean sameOrder =
-                    Objects.equals(predictedHomeTeam, officialHomeName)
-                            && Objects.equals(predictedAwayTeam, officialAwayName);
-
-            boolean reversedOrder =
-                    Objects.equals(predictedHomeTeam, officialAwayName)
-                            && Objects.equals(predictedAwayTeam, officialHomeName);
-
-            if (sameOrder || reversedOrder) {
-                return officialMatch;
-            }
-        }
-
-        return null;
     }
 }
