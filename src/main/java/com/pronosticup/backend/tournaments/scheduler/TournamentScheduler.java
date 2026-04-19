@@ -30,7 +30,7 @@ public class TournamentScheduler {
     /**
      * lanzo la sincronización automática cada cinco minutos.
      */
-    @Scheduled(initialDelay = 300000, fixedDelay = 300000)
+    @Scheduled(initialDelay = 10000, fixedDelay = 300000)
     public void syncEveryFiveMinutes() {
         tournamentSyncService.syncAll();
     }
