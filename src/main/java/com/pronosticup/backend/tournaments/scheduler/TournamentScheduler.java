@@ -1,6 +1,7 @@
 package com.pronosticup.backend.tournaments.scheduler;
 
 import com.pronosticup.backend.tournaments.service.TournamentSyncService;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -20,6 +21,11 @@ import org.springframework.stereotype.Component;
 public class TournamentScheduler {
 
     private final TournamentSyncService tournamentSyncService;
+
+    @PostConstruct
+    public void init() {
+        log.info("[TOURNAMENT_SCHEDULER] Bean creado");
+    }
 
     @EventListener(ApplicationReadyEvent.class)
     public void syncOnStartup() {
