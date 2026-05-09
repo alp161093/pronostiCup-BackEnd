@@ -17,7 +17,8 @@ public class CorsConfig {
 
         configuration.setAllowedOrigins(List.of(
                 "http://localhost:4200",
-                "https://pronosticup.onrender.com"
+                "https://pronosticup.onrender.com",
+                "https://pronosticup-main.onrender.com"
         ));
 
         configuration.setAllowedMethods(List.of(
