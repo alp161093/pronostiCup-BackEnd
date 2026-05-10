@@ -195,6 +195,111 @@ public class PronosticReceiptService {
         }
     }
 
+    /**
+     * Envío al propietario de la liga el pronóstico pendiente
+     * junto con el PDF para que pueda revisarlo.
+     */
+    public void sendPendingPronosticOwnerEmailWithPdf(Pronostic pronostic, String ownerEmail, String leagueName, String tournament, String alias, String memberEmail) {
+
+        try {
+
+            log.info("[RECEIPT] Inicio aviso owner con PDF | ownerEmail={} | liga={} | torneo={} | alias={}",
+                    ownerEmail, leagueName, tournament, alias);
+
+            byte[] pdfContent = pronosticPdfService.generatePronosticPdf(
+                    pronostic,
+                    "Pronóstico pendiente de revisión"
+            );
+
+            String subject = "⏳ PronostiCup | Pronóstico pendiente de revisión";
+
+            String body = buildPendingOwnerEmailBody(
+                    leagueName,
+                    tournament,
+                    alias,
+                    memberEmail
+            );
+
+            String pdfFileName =
+                    "pronostico-pendiente-" + tournament + "-" + alias + ".pdf";
+
+            emailService.sendEmailWithAttachments(
+                    ownerEmail,
+                    subject,
+                    body,
+                    List.of(
+                            new EmailService.EmailAttachment(
+                                    pdfFileName,
+                                    pdfContent,
+                                    "application/pdf"
+                            )
+                    )
+            );
+
+            log.info("[RECEIPT] Aviso owner enviado correctamente con PDF | ownerEmail={}",
+                    ownerEmail);
+
+        } catch (Exception e) {
+
+            log.error("[RECEIPT] Error enviando aviso owner con PDF | ownerEmail={}",
+                    ownerEmail,
+                    e);
+        }
+    }
+
+    /**
+     * Envío al propietario de la liga un aviso de que un pronóstico ha sido actualizado,
+     * adjuntando el PDF para que pueda revisar los cambios.
+     */
+    public void sendUpdatedPronosticOwnerEmailWithPdf(
+            Pronostic pronostic,
+            String ownerEmail,
+            String leagueName,
+            String tournament,
+            String alias,
+            String memberEmail
+    ) {
+        try {
+            log.info("[RECEIPT] Inicio aviso owner actualización con PDF | ownerEmail={} | liga={} | torneo={} | alias={} | memberEmail={}",
+                    ownerEmail, leagueName, tournament, alias, memberEmail);
+
+            byte[] pdfContent = pronosticPdfService.generatePronosticPdf(
+                    pronostic,
+                    "Pronóstico actualizado"
+            );
+
+            String subject = "✏️ PronostiCup | Pronóstico actualizado";
+
+            String body = buildUpdatedOwnerEmailBody(
+                    leagueName,
+                    tournament,
+                    alias,
+                    memberEmail
+            );
+
+            String pdfFileName = "pronostico-actualizado-" + tournament + "-" + alias + ".pdf";
+
+            emailService.sendEmailWithAttachments(
+                    ownerEmail,
+                    subject,
+                    body,
+                    List.of(
+                            new EmailService.EmailAttachment(
+                                    pdfFileName,
+                                    pdfContent,
+                                    "application/pdf"
+                            )
+                    )
+            );
+
+            log.info("[RECEIPT] Aviso owner actualización enviado correctamente con PDF | ownerEmail={}",
+                    ownerEmail);
+
+        } catch (Exception e) {
+            log.error("[RECEIPT] Error enviando aviso owner actualización con PDF | ownerEmail={} | liga={} | torneo={} | alias={} | memberEmail={}",
+                    ownerEmail, leagueName, tournament, alias, memberEmail, e);
+        }
+    }
     private String buildFileContent(String encrypted, String leagueName, String tournament, String alias) {
         return "PronostiCup - Comprobante cifrado de pronóstico\n" +
                 "Torneo: " + tournament + "\n" +
@@ -394,5 +499,90 @@ public class PronosticReceiptService {
             </div>
         </div>
         """.formatted(leagueName, tournament.toUpperCase(), alias);
+    }
+
+    private String buildPendingOwnerEmailBody(String leagueName, String tournament, String alias, String memberEmail) {
+        return """
+            <div style="font-family: Arial, Helvetica, sans-serif; max-width: 640px; margin: 0 auto; color: #1f2937; background: #ffffff;">
+                
+                <div style="background: linear-gradient(135deg, #2563eb 0%%, #38bdf8 100%%); padding: 24px 28px; border-radius: 16px 16px 0 0; color: white;">
+                    <h1 style="margin: 0; font-size: 28px;">PronostiCup 🏆</h1>
+                    <p style="margin: 10px 0 0 0; font-size: 15px; opacity: 0.95;">
+                        Nuevo pronóstico pendiente de revisión
+                    </p>
+                </div>
+        
+                <div style="padding: 28px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 16px 16px;">
+                    <p style="margin-top: 0; font-size: 16px;">
+                        Se ha registrado un nuevo pronóstico en una de tus ligas y está <strong>pendiente de validación</strong>.
+                    </p>
+        
+                    <div style="background: #eff6ff; border-radius: 12px; padding: 18px 20px; margin: 22px 0;">
+                        <p style="margin: 0 0 10px 0;"><strong>Liga:</strong> %s</p>
+                        <p style="margin: 0 0 10px 0;"><strong>Torneo:</strong> %s</p>
+                        <p style="margin: 0 0 10px 0;"><strong>Alias del pronóstico:</strong> %s</p>
+                        <p style="margin: 0;"><strong>Email del usuario:</strong> %s</p>
+                    </div>
+        
+                    <div style="background: #fff7ed; border-left: 5px solid #f59e0b; padding: 16px 18px; border-radius: 10px; margin: 22px 0;">
+                        <p style="margin: 0; line-height: 1.65;">
+                            Accede a <strong>PronostiCup</strong> y entra en la liga para <strong>aceptar o rechazar</strong>
+                            este pronóstico.
+                        </p>
+                    </div>
+        
+                    <p style="margin-top: 26px; font-size: 13px; color: #6b7280;">
+                        Gracias por usar <strong>PronostiCup</strong>.
+                    </p>
+                </div>
+            </div>
+            """.formatted(
+                        leagueName,
+                        tournament.toUpperCase(),
+                        alias == null ? "Sin alias" : alias,
+                        memberEmail == null ? "Usuario sin email" : memberEmail
+                );
+    }
+
+    private String buildUpdatedOwnerEmailBody(String leagueName, String tournament, String alias, String memberEmail) {
+        return """
+            <div style="font-family: Arial, Helvetica, sans-serif; max-width: 640px; margin: 0 auto; color: #1f2937; background: #ffffff;">
+                
+                <div style="background: linear-gradient(135deg, #d97706 0%%, #f59e0b 100%%); padding: 24px 28px; border-radius: 16px 16px 0 0; color: white;">
+                    <h1 style="margin: 0; font-size: 28px;">PronostiCup 🏆</h1>
+                    <p style="margin: 10px 0 0 0; font-size: 15px; opacity: 0.95;">
+                        Pronóstico actualizado
+                    </p>
+                </div>
+        
+                <div style="padding: 28px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 16px 16px;">
+                    <p style="margin-top: 0; font-size: 16px;">
+                        Un usuario ha <strong>actualizado su pronóstico</strong> en una de tus ligas.
+                    </p>
+        
+                    <div style="background: #fff7ed; border-radius: 12px; padding: 18px 20px; margin: 22px 0;">
+                        <p style="margin: 0 0 10px 0;"><strong>Liga:</strong> %s</p>
+                        <p style="margin: 0 0 10px 0;"><strong>Torneo:</strong> %s</p>
+                        <p style="margin: 0 0 10px 0;"><strong>Alias del pronóstico:</strong> %s</p>
+                        <p style="margin: 0;"><strong>Email del usuario:</strong> %s</p>
+                    </div>
+        
+                    <div style="background: #eff6ff; border-left: 5px solid #2563eb; padding: 16px 18px; border-radius: 10px; margin: 22px 0;">
+                        <p style="margin: 0; line-height: 1.65;">
+                            Se adjunta el <strong>PDF actualizado</strong> para que puedas revisar el nuevo contenido del pronóstico.
+                        </p>
+                    </div>
+        
+                    <p style="margin-top: 26px; font-size: 13px; color: #6b7280;">
+                        Gracias por usar <strong>PronostiCup</strong>.
+                    </p>
+                </div>
+            </div>
+            """.formatted(
+                        leagueName,
+                        tournament.toUpperCase(),
+                        alias == null ? "Sin alias" : alias,
+                        memberEmail == null ? "Usuario sin email" : memberEmail
+                );
     }
 }
