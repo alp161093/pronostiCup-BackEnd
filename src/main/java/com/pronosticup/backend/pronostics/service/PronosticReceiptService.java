@@ -199,7 +199,7 @@ public class PronosticReceiptService {
      * Envío al propietario de la liga el pronóstico pendiente
      * junto con el PDF para que pueda revisarlo.
      */
-    public void sendPendingPronosticOwnerEmailWithPdf(Pronostic pronostic, String ownerEmail, String leagueName, String tournament, String alias, String memberEmail) {
+    public void sendPendingPronosticOwnerEmailWithPdf(Pronostic pronostic, String ownerEmail, String leagueName, String tournament, String alias, String memberEmail, String username) {
 
         try {
 
@@ -217,7 +217,8 @@ public class PronosticReceiptService {
                     leagueName,
                     tournament,
                     alias,
-                    memberEmail
+                    memberEmail,
+                    username
             );
 
             String pdfFileName =
@@ -251,14 +252,7 @@ public class PronosticReceiptService {
      * Envío al propietario de la liga un aviso de que un pronóstico ha sido actualizado,
      * adjuntando el PDF para que pueda revisar los cambios.
      */
-    public void sendUpdatedPronosticOwnerEmailWithPdf(
-            Pronostic pronostic,
-            String ownerEmail,
-            String leagueName,
-            String tournament,
-            String alias,
-            String memberEmail
-    ) {
+    public void sendUpdatedPronosticOwnerEmailWithPdf( Pronostic pronostic, String ownerEmail, String leagueName, String tournament, String alias, String memberEmail, String username) {
         try {
             log.info("[RECEIPT] Inicio aviso owner actualización con PDF | ownerEmail={} | liga={} | torneo={} | alias={} | memberEmail={}",
                     ownerEmail, leagueName, tournament, alias, memberEmail);
@@ -274,7 +268,8 @@ public class PronosticReceiptService {
                     leagueName,
                     tournament,
                     alias,
-                    memberEmail
+                    memberEmail,
+                    username
             );
 
             String pdfFileName = "pronostico-actualizado-" + tournament + "-" + alias + ".pdf";
@@ -501,7 +496,7 @@ public class PronosticReceiptService {
         """.formatted(leagueName, tournament.toUpperCase(), alias);
     }
 
-    private String buildPendingOwnerEmailBody(String leagueName, String tournament, String alias, String memberEmail) {
+    private String buildPendingOwnerEmailBody(String leagueName, String tournament, String alias, String memberEmail , String username) {
         return """
             <div style="font-family: Arial, Helvetica, sans-serif; max-width: 640px; margin: 0 auto; color: #1f2937; background: #ffffff;">
                 
@@ -521,6 +516,7 @@ public class PronosticReceiptService {
                         <p style="margin: 0 0 10px 0;"><strong>Liga:</strong> %s</p>
                         <p style="margin: 0 0 10px 0;"><strong>Torneo:</strong> %s</p>
                         <p style="margin: 0 0 10px 0;"><strong>Alias del pronóstico:</strong> %s</p>
+                        <p style="margin: 0;"><strong>Usuario:</strong> %s</p>
                         <p style="margin: 0;"><strong>Email del usuario:</strong> %s</p>
                     </div>
         
@@ -540,11 +536,12 @@ public class PronosticReceiptService {
                         leagueName,
                         tournament.toUpperCase(),
                         alias == null ? "Sin alias" : alias,
+                        username == null ? "Sin usuario" : username,
                         memberEmail == null ? "Usuario sin email" : memberEmail
                 );
     }
 
-    private String buildUpdatedOwnerEmailBody(String leagueName, String tournament, String alias, String memberEmail) {
+    private String buildUpdatedOwnerEmailBody(String leagueName, String tournament, String alias, String memberEmail , String username) {
         return """
             <div style="font-family: Arial, Helvetica, sans-serif; max-width: 640px; margin: 0 auto; color: #1f2937; background: #ffffff;">
                 
@@ -564,6 +561,7 @@ public class PronosticReceiptService {
                         <p style="margin: 0 0 10px 0;"><strong>Liga:</strong> %s</p>
                         <p style="margin: 0 0 10px 0;"><strong>Torneo:</strong> %s</p>
                         <p style="margin: 0 0 10px 0;"><strong>Alias del pronóstico:</strong> %s</p>
+                        <p style="margin: 0;"><strong>Usuario:</strong> %s</p>
                         <p style="margin: 0;"><strong>Email del usuario:</strong> %s</p>
                     </div>
         
@@ -582,6 +580,7 @@ public class PronosticReceiptService {
                         leagueName,
                         tournament.toUpperCase(),
                         alias == null ? "Sin alias" : alias,
+                        username == null ? "Sin usuario" : username,
                         memberEmail == null ? "Usuario sin email" : memberEmail
                 );
     }
