@@ -131,15 +131,14 @@ public class PronosticService {
                 .build();
 
         leagueMemberRepository.save(lm);
-
+        String userEmail = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"))
+                .getEmail();
         /**
          * Envío el comprobante cifrado solo cuando el pronóstico y la relación con la liga ya se han guardado correctamente.
          * Si el correo falla no revierto el guardado, solo dejo trazado el error.
          */
         try {
-            String userEmail = userRepository.findById(userId)
-                    .orElseThrow(() -> new RuntimeException("User not found"))
-                    .getEmail();
 
             pronosticReceiptService.sendEncryptedPronosticReceipt(
                     doc,
@@ -342,15 +341,17 @@ public class PronosticService {
             leagueMemberRepository.updatePronosticAliasByPronosticId(saved.getPronosticId(), newAlias);
         }
 
+        String userEmail = userRepository.findById(saved.getUserId())
+                .orElseThrow(() -> new RuntimeException("User not found"))
+                .getEmail();
+
+
         /**
          * Envío el comprobante cifrado de la actualización una vez guardados
          * los cambios en Mongo y sincronizado el alias en PostgreSQL.
          * Si el email falla no rompo la actualización del pronóstico.
          */
         try {
-            String userEmail = userRepository.findById(saved.getUserId())
-                    .orElseThrow(() -> new RuntimeException("User not found"))
-                    .getEmail();
 
             pronosticReceiptService.sendUpdatedPronosticReceipt(
                     saved,
