@@ -131,15 +131,14 @@ public class PronosticService {
                 .build();
 
         leagueMemberRepository.save(lm);
-
+        String userEmail = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"))
+                .getEmail();
         /**
          * Envío el comprobante cifrado solo cuando el pronóstico y la relación con la liga ya se han guardado correctamente.
          * Si el correo falla no revierto el guardado, solo dejo trazado el error.
          */
         try {
-            String userEmail = userRepository.findById(userId)
-                    .orElseThrow(() -> new RuntimeException("User not found"))
-                    .getEmail();
 
             pronosticReceiptService.sendEncryptedPronosticReceipt(
                     doc,
@@ -151,6 +150,32 @@ public class PronosticService {
 
         } catch (Exception e) {
             throw new RuntimeException("No he podido enviar el comprobante por email para pronosticId=" + pronosticId);
+        }
+
+
+        /**
+         * Aviso al propietario de la liga cuando un miembro crea un pronóstico pendiente.
+         * Si el correo falla no revierto el guardado, solo queda trazado en el servicio de email.
+         */
+        try {
+            if (!isOwner) {
+                Long ownerId = league.getOwner().getId();
+
+                String ownerEmail = userRepository.findById(ownerId)
+                        .orElseThrow(() -> new RuntimeException("Owner user not found"))
+                        .getEmail();
+
+                pronosticReceiptService.sendPendingPronosticOwnerEmailWithPdf(
+                        doc,
+                        ownerEmail,
+                        leagueName,
+                        tournament,
+                        alias,
+                        userEmail
+                );
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("No he podido enviar el aviso al propietario para pronosticId=" + pronosticId);
         }
 
         return new SavePronosticResponse(pronosticId, false);
@@ -316,15 +341,17 @@ public class PronosticService {
             leagueMemberRepository.updatePronosticAliasByPronosticId(saved.getPronosticId(), newAlias);
         }
 
+        String userEmail = userRepository.findById(saved.getUserId())
+                .orElseThrow(() -> new RuntimeException("User not found"))
+                .getEmail();
+
+
         /**
          * Envío el comprobante cifrado de la actualización una vez guardados
          * los cambios en Mongo y sincronizado el alias en PostgreSQL.
          * Si el email falla no rompo la actualización del pronóstico.
          */
         try {
-            String userEmail = userRepository.findById(saved.getUserId())
-                    .orElseThrow(() -> new RuntimeException("User not found"))
-                    .getEmail();
 
             pronosticReceiptService.sendUpdatedPronosticReceipt(
                     saved,
@@ -336,6 +363,37 @@ public class PronosticService {
 
         } catch (Exception e) {
             throw new RuntimeException("No he podido enviar el comprobante de actualización para pronosticId = " + saved.getPronosticId());
+        }
+
+        /**
+         * Aviso al propietario de la liga cuando un miembro actualiza su pronóstico.
+         * Si el correo falla no revierto la actualización, solo queda trazado en el servicio de email.
+         */
+        try {
+            League league = leagueRepository.findById(saved.getLeagueId())
+                    .orElseThrow(() -> new RuntimeException("League not found"));
+
+            Long ownerId = league.getOwner().getId();
+
+            boolean isOwner = Objects.equals(ownerId, saved.getUserId());
+
+            if (!isOwner) {
+                String ownerEmail = userRepository.findById(ownerId)
+                        .orElseThrow(() -> new RuntimeException("Owner user not found"))
+                        .getEmail();
+
+                pronosticReceiptService.sendUpdatedPronosticOwnerEmailWithPdf(
+                        saved,
+                        ownerEmail,
+                        saved.getLeagueName(),
+                        saved.getTournament(),
+                        saved.getPronosticAlias(),
+                        userEmail
+                );
+            }
+
+        } catch (Exception e) {
+            throw new RuntimeException("No he podido enviar el aviso de actualización al propietario para pronosticId = " + saved.getPronosticId());
         }
 
         return new UpdatePronosticResponse(
