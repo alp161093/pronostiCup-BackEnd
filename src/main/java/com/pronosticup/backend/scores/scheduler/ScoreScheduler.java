@@ -2,6 +2,7 @@ package com.pronosticup.backend.scores.scheduler;
 
 import com.pronosticup.backend.scores.service.ScoreBatchService;
 import jakarta.annotation.PostConstruct;
+import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -28,13 +29,19 @@ public class ScoreScheduler {
 
     @EventListener(ApplicationReadyEvent.class)
     public void calculateOnStartup() {
-        System.out.println("### SCORE_SCHEDULER calculateOnStartup INICIO ###");
+        if (!running.compareAndSet(false, true)) {
+            return;
+        }
+
         try {
+            System.out.println("### SCORE_SCHEDULER calculateOnStartup INICIO ###");
             scoreBatchService.calculateScoresBatchForAllSupportedTournaments();
             System.out.println("### SCORE_SCHEDULER calculateOnStartup FIN ###");
         } catch (Exception ex) {
             System.out.println("### SCORE_SCHEDULER calculateOnStartup ERROR: " + ex.getMessage() + " ###");
             ex.printStackTrace();
+        } finally {
+            running.set(false);
         }
     }
 
