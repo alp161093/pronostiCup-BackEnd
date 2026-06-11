@@ -1,10 +1,12 @@
 package com.pronosticup.backend.users.controller;
-
 import com.pronosticup.backend.users.controller.dto.request.LoginRequest;
 import com.pronosticup.backend.users.controller.dto.request.RegisterRequest;
 import com.pronosticup.backend.users.controller.dto.request.UpdateUserRequest;
+import com.pronosticup.backend.users.controller.dto.request.ForgotPasswordRequest;
 import com.pronosticup.backend.users.controller.dto.response.RegisterResponse;
 import com.pronosticup.backend.users.controller.dto.response.UserProfileResponse;
+import com.pronosticup.backend.users.controller.dto.response.ForgotPasswordResponse;
+import com.pronosticup.backend.users.controller.dto.request.ResetPasswordRequest;
 import com.pronosticup.backend.users.service.AuthService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -52,5 +54,24 @@ public class AuthController {
     public ResponseEntity<UserProfileResponse> updateUser(@PathVariable Long userId,
                                                           @RequestBody UpdateUserRequest request) {
         return ResponseEntity.ok(auth.updateUser(userId, request));
+    }
+
+    /**
+     * Envio de email para instrucciones de como recuperar la contraseña
+     */
+    @PostMapping("/api/auth/forgot-password")
+    public ResponseEntity<ForgotPasswordResponse> forgotPassword(@RequestBody ForgotPasswordRequest request) {
+        boolean success = auth.forgotPassword(request.email());
+        return ResponseEntity.ok(new ForgotPasswordResponse(success));
+    }
+    /**
+     * reseteo de la contraseña
+     */
+    @PostMapping("/api/auth/reset-password")
+    public ResponseEntity<Boolean> resetPassword(@RequestBody ResetPasswordRequest request) {
+
+        boolean success = auth.resetPassword(request);
+
+        return ResponseEntity.ok(success);
     }
 }
