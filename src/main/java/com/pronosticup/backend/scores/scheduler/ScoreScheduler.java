@@ -19,6 +19,7 @@ import org.springframework.stereotype.Component;
 public class ScoreScheduler {
 
     private final ScoreBatchService scoreBatchService;
+    private final AtomicBoolean running = new AtomicBoolean(false);
 
     @PostConstruct
     public void init() {
@@ -37,15 +38,22 @@ public class ScoreScheduler {
         }
     }
 
-    @Scheduled(initialDelay = 60000, fixedDelay = 300000)
+    @Scheduled(initialDelay = 600000, fixedDelay = 600000)
     public void calculateEveryFiveMinutes() {
-        System.out.println("### SCORE_SCHEDULER cálculo programado INICIO ###");
+        if (!running.compareAndSet(false, true)) {
+            System.out.println("### SCORE_SCHEDULER ya hay un cálculo en ejecución, se omite ###");
+            return;
+        }
+
         try {
+            System.out.println("### SCORE_SCHEDULER cálculo programado INICIO ###");
             scoreBatchService.calculateScoresBatchForAllSupportedTournaments();
             System.out.println("### SCORE_SCHEDULER cálculo programado FIN ###");
         } catch (Exception ex) {
             System.out.println("### SCORE_SCHEDULER cálculo programado ERROR: " + ex.getMessage() + " ###");
             ex.printStackTrace();
+        } finally {
+            running.set(false);
         }
     }
 }
