@@ -27,7 +27,7 @@ public class ScoreScheduler {
         System.out.println("### SCORE_SCHEDULER Bean creado ###");
     }
 
-    @EventListener(ApplicationReadyEvent.class)
+    /*@EventListener(ApplicationReadyEvent.class)
     public void calculateOnStartup() {
         if (!running.compareAndSet(false, true)) {
             return;
@@ -43,7 +43,7 @@ public class ScoreScheduler {
         } finally {
             running.set(false);
         }
-    }
+    }*/
 
     @Scheduled(initialDelay = 600000, fixedDelay = 600000)
     public void calculateEveryFiveMinutes() {
