@@ -9,6 +9,7 @@ import com.pronosticup.backend.pronostics.controller.dto.request.DecryptPronosti
 import com.pronosticup.backend.pronostics.controller.dto.request.SavePronosticRequest;
 import com.pronosticup.backend.pronostics.controller.dto.request.UpdatePronosticRequest;
 import com.pronosticup.backend.pronostics.controller.dto.response.*;
+import com.pronosticup.backend.pronostics.controller.dto.PronosticClassificationProjection;
 import com.pronosticup.backend.pronostics.entity.Pronostic;
 import com.pronosticup.backend.pronostics.repository.PronosticRepository;
 import com.pronosticup.backend.security.service.EncryptionService;
@@ -466,12 +467,12 @@ public class PronosticService {
                 .distinct()
                 .toList();
 
-        Map<String, Pronostic> pronosticsById =
-                pronosticRepository.findByPronosticIdIn(pronosticIds)
+        Map<String, Integer> pointsByPronosticId =
+                pronosticRepository.findClassificationByPronosticIdIn(pronosticIds)
                         .stream()
                         .collect(Collectors.toMap(
-                                Pronostic::getPronosticId,
-                                p -> p
+                                PronosticClassificationProjection::getPronosticId,
+                                p -> p.getTotalPoints() != null ? p.getTotalPoints() : 0
                         ));
 
         Map<Long, String> usernamesById =
@@ -490,9 +491,9 @@ public class PronosticService {
                         return null;
                     }
 
-                    Pronostic pronostic = pronosticsById.get(pronosticId);
+                    Integer totalPoints = pointsByPronosticId.get(pronosticId);
 
-                    if (pronostic == null) {
+                    if (totalPoints == null) {
                         return null;
                     }
 
@@ -500,10 +501,6 @@ public class PronosticService {
                             member.getUserId(),
                             "Usuario"
                     );
-
-                    Integer totalPoints = pronostic.getTotalPoints() != null
-                            ? pronostic.getTotalPoints()
-                            : 0;
 
                     return new PronosticClasificacionResponse(
                             pronosticId,
