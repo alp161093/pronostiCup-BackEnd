@@ -9,7 +9,8 @@ import java.util.Optional;
 public interface PronosticRepository extends MongoRepository<Pronostic, String> {
     boolean existsByPronosticId(String pronosticId);
     Optional<Pronostic> findByPronosticId(String pronosticId);
-
+    //se busca un listado de pronosticos
+    List<Pronostic> findByPronosticIdIn(List<String> pronosticIds);
     // para el futuro (owner revisa pendientes)
     List<Pronostic> findByLeagueIdAndConfirmedFalse(String leagueId);
 

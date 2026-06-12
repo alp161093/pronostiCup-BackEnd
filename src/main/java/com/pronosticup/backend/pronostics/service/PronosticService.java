@@ -412,43 +412,111 @@ public class PronosticService {
     }
 
     public List<PronosticClasificacionResponse> getLeagueClassification(String leagueId) {
-        List<LeagueMember> members = leagueMemberRepository.findByLeagueIdAndConfirmedTrue(leagueId);
+//        List<LeagueMember> members = leagueMemberRepository.findByLeagueIdAndConfirmedTrue(leagueId);
+//
+//        List<PronosticClasificacionResponse> result = new ArrayList<>();
+//
+//        for (LeagueMember member : members) {
+//            String pronosticId = member.getPronosticId();
+//            if (pronosticId == null || pronosticId.isBlank()) {
+//                continue;
+//            }
+//
+//            Optional<Pronostic> pronosticOpt = pronosticRepository.findByPronosticId(pronosticId);
+//            if (pronosticOpt.isEmpty()) {
+//                continue;
+//            }
+//
+//            Pronostic pronostic = pronosticOpt.get();
+//
+//            String username = userRepository.findById(member.getUserId())
+//                    .map(User::getUsername)
+//                    .orElse("Usuario");
+//
+//            Integer totalPoints = pronostic.getTotalPoints() != null ? pronostic.getTotalPoints() : 0;
+//
+//            result.add(new PronosticClasificacionResponse(
+//                    pronosticId,
+//                    totalPoints,
+//                    username,
+//                    member.getPronosticAlias()
+//            ));
+//        }
+//
+//        result.sort(Comparator.comparing(
+//                PronosticClasificacionResponse::totalPoints,
+//                Comparator.nullsLast(Comparator.reverseOrder())
+//        ));
+//
+//        return result;
 
-        List<PronosticClasificacionResponse> result = new ArrayList<>();
+        List<LeagueMember> members =
+                leagueMemberRepository.findByLeagueIdAndConfirmedTrue(leagueId);
 
-        for (LeagueMember member : members) {
-            String pronosticId = member.getPronosticId();
-            if (pronosticId == null || pronosticId.isBlank()) {
-                continue;
-            }
+        List<String> pronosticIds = members.stream()
+                .map(LeagueMember::getPronosticId)
+                .filter(id -> id != null && !id.isBlank())
+                .distinct()
+                .toList();
 
-            Optional<Pronostic> pronosticOpt = pronosticRepository.findByPronosticId(pronosticId);
-            if (pronosticOpt.isEmpty()) {
-                continue;
-            }
+        List<Long> userIds = members.stream()
+                .map(LeagueMember::getUserId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
 
-            Pronostic pronostic = pronosticOpt.get();
+        Map<String, Pronostic> pronosticsById =
+                pronosticRepository.findByPronosticIdIn(pronosticIds)
+                        .stream()
+                        .collect(Collectors.toMap(
+                                Pronostic::getPronosticId,
+                                p -> p
+                        ));
 
-            String username = userRepository.findById(member.getUserId())
-                    .map(User::getUsername)
-                    .orElse("Usuario");
+        Map<Long, String> usernamesById =
+                userRepository.findAllById(userIds)
+                        .stream()
+                        .collect(Collectors.toMap(
+                                User::getId,
+                                User::getUsername
+                        ));
 
-            Integer totalPoints = pronostic.getTotalPoints() != null ? pronostic.getTotalPoints() : 0;
+        return members.stream()
+                .map(member -> {
+                    String pronosticId = member.getPronosticId();
 
-            result.add(new PronosticClasificacionResponse(
-                    pronosticId,
-                    totalPoints,
-                    username,
-                    member.getPronosticAlias()
-            ));
-        }
+                    if (pronosticId == null || pronosticId.isBlank()) {
+                        return null;
+                    }
 
-        result.sort(Comparator.comparing(
-                PronosticClasificacionResponse::totalPoints,
-                Comparator.nullsLast(Comparator.reverseOrder())
-        ));
+                    Pronostic pronostic = pronosticsById.get(pronosticId);
 
-        return result;
+                    if (pronostic == null) {
+                        return null;
+                    }
+
+                    String username = usernamesById.getOrDefault(
+                            member.getUserId(),
+                            "Usuario"
+                    );
+
+                    Integer totalPoints = pronostic.getTotalPoints() != null
+                            ? pronostic.getTotalPoints()
+                            : 0;
+
+                    return new PronosticClasificacionResponse(
+                            pronosticId,
+                            totalPoints,
+                            username,
+                            member.getPronosticAlias()
+                    );
+                })
+                .filter(Objects::nonNull)
+                .sorted(Comparator.comparing(
+                        PronosticClasificacionResponse::totalPoints,
+                        Comparator.nullsLast(Comparator.reverseOrder())
+                ))
+                .toList();
     }
 
     public DeletePronosticResponse deletePronostic(String pronosticId) {
