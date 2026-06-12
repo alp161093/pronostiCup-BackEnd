@@ -19,6 +19,7 @@ import com.pronosticup.backend.tournaments.repository.TournamentSnapshotReposito
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import java.util.stream.Collectors;
 
 import java.time.Instant;
 import java.util.*;
