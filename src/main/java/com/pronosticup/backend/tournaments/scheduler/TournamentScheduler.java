@@ -7,9 +7,16 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 @Component
 @RequiredArgsConstructor
+@ConditionalOnProperty(
+        prefix = "app.schedulers.tournament-sync",
+        name = "enabled",
+        havingValue = "true",
+        matchIfMissing = false
+)
 public class TournamentScheduler {
 
     private final TournamentSyncService tournamentSyncService;
