@@ -564,9 +564,7 @@ public class ScoreBatchService {
         return teams;
     }
 
-    private Integer calculateFinalChampionPoints(Pronostic pronostic,
-                                                 Map<String, Object> predictedKoMatch,
-                                                 Map<String, List<Map<String, Object>>> officialMatchesByStage) {
+    private Integer calculateFinalChampionPoints(Pronostic pronostic, Map<String, Object> predictedKoMatch, Map<String, List<Map<String, Object>>> officialMatchesByStage) {
 
         List<Map<String, Object>> officialFinals = officialMatchesByStage.get("FINAL");
 
@@ -578,34 +576,40 @@ public class ScoreBatchService {
         Map<String, Object> officialFinal = officialFinals.get(0);
 
         Map<String, Object> officialHomeTeam = scoreService.getMap(officialFinal, "homeTeam");
+
         Map<String, Object> officialAwayTeam = scoreService.getMap(officialFinal, "awayTeam");
 
         String officialHomeName = scoreService.getString(officialHomeTeam, "name");
+
         String officialAwayName = scoreService.getString(officialAwayTeam, "name");
 
-        if (officialHomeName == null || officialAwayName == null) {
-            resetKoMatchPoints(predictedKoMatch);
-            return 0;
-        }
-
         Map<String, Object> home = scoreService.getMap(predictedKoMatch, "home");
+
         Map<String, Object> away = scoreService.getMap(predictedKoMatch, "away");
 
         String predictedHomeTeam = extractTeamNameFromKnockoutSide(home);
+
         String predictedAwayTeam = extractTeamNameFromKnockoutSide(away);
 
         int homePoints = 0;
         int awayPoints = 0;
 
-        if (Objects.equals(predictedHomeTeam, officialHomeName) || Objects.equals(predictedHomeTeam, officialAwayName)) {
+        /*
+         * 800 puntos por cada equipo acertado que ya aparezca
+         * oficialmente como finalista.
+         */
+        if ((officialHomeName != null && Objects.equals(predictedHomeTeam, officialHomeName)) || (officialAwayName != null && Objects.equals(predictedHomeTeam, officialAwayName)))
+        {
             homePoints += 800;
         }
 
-        if (Objects.equals(predictedAwayTeam, officialHomeName) || Objects.equals(predictedAwayTeam, officialAwayName)) {
+        if ((officialHomeName != null && Objects.equals(predictedAwayTeam, officialHomeName)) || (officialAwayName != null && Objects.equals(predictedAwayTeam, officialAwayName)))
+        {
             awayPoints += 800;
         }
 
         Map<String, Object> score = scoreService.getMap(officialFinal, "score");
+
         String winner = scoreService.getString(score, "winner");
 
         String championName = null;
@@ -616,7 +620,11 @@ public class ScoreBatchService {
             championName = officialAwayName;
         }
 
-        if (championName == null) {
+        /*
+         * Si todavía no existe campeón, devolvemos únicamente
+         * los puntos por los finalistas confirmados.
+         */
+        if (championName == null || championName.isBlank()) {
             int totalPoints = homePoints + awayPoints;
 
             predictedKoMatch.put("homeMatchPoints", homePoints);
@@ -628,7 +636,11 @@ public class ScoreBatchService {
 
         String predictedChampion = extractChampionTeamName(pronostic, predictedKoMatch);
 
+        /*
+         * 1500 puntos adicionales por acertar el campeón.
+         */
         if (predictedChampion != null && Objects.equals(predictedChampion, championName)) {
+
             if (Objects.equals(predictedHomeTeam, championName)) {
                 homePoints += 1500;
             } else if (Objects.equals(predictedAwayTeam, championName)) {
